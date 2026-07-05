@@ -556,12 +556,6 @@ impl<'a> Interpreter<'a> {
                 })
             }
 
-            Expression::Binary(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "binary",
-                })
-            }
-
             Expression::Member(_) => {
                 Err(RuntimeError::UnsupportedExpression {
                     kind: "member access",

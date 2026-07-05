@@ -9,6 +9,7 @@ members = [
   "crates/kome_ast",
   "crates/kome_lsp",
   "crates/kome_parser",
+  "crates/kome_runtime",
   "crates/kome_semantics",
 ]
 
@@ -19,8 +20,10 @@ edition = "2024"
 kome_ast = { path = "crates/kome_ast" }
 kome_parser = { path = "crates/kome_parser" }
 kome_semantics = { path = "crates/kome_semantics" }
+kome_runtime = { path = "crates/kome_runtime" }
 
 [dependencies]
 kome_ast.workspace = true
 kome_parser.workspace = true
 kome_semantics.workspace = true
+kome_runtime.workspace = true

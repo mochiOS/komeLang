@@ -301,6 +301,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kome_runtime"
+version = "0.1.0"
+dependencies = [
+ "kome_ast",
+ "kome_parser",
+]
+
+[[package]]
 name = "kome_semantics"
 version = "0.1.0"
 dependencies = [
@@ -314,6 +322,7 @@ version = "0.1.0"
 dependencies = [
  "kome_ast",
  "kome_parser",
+ "kome_runtime",
  "kome_semantics",
 ]
 

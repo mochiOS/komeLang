@@ -20,6 +20,7 @@ use std::{
     collections::HashMap,
     fmt,
 };
+use kome_ast::expressions::{BinaryExpression, BinaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -108,6 +109,10 @@ pub enum RuntimeError {
     Native {
         message: String,
     },
+
+    TypeError {
+        message: String,
+    }
 }
 
 impl RuntimeError {
@@ -224,6 +229,10 @@ impl fmt::Display for RuntimeError {
                     formatter,
                     "native function failed: {message}",
                 )
+            }
+
+            Self::TypeError { message } => {
+                write!(formatter, "type error: {message}")
             }
         }
     }
@@ -601,6 +610,10 @@ impl<'a> Interpreter<'a> {
                 })
             }
 
+            Expression::Binary(binary) => {
+                self.evaluate_binary(binary)
+            }
+
             Expression::DotIdent(_) => {
                 Err(RuntimeError::UnsupportedExpression {
                     kind: "dot identifier",
@@ -616,6 +629,45 @@ impl<'a> Interpreter<'a> {
             Expression::Component(_) => {
                 Err(RuntimeError::UnsupportedExpression {
                     kind: "component",
+                })
+            }
+        }
+    }
+
+    fn evaluate_binary(
+        &mut self,
+        binary: &BinaryExpression,
+    ) -> Result<Value, RuntimeError> {
+        let left =
+            self.evaluate_expression(&binary.left)?;
+
+        let right =
+            self.evaluate_expression(&binary.right)?;
+
+        match (&binary.op, left, right) {
+            (
+                BinaryOp::Add,
+                Value::String(left),
+                Value::String(right),
+            ) => {
+                Ok(Value::String(left + &right))
+            }
+
+            (
+                BinaryOp::Add,
+                Value::Number(left),
+                Value::Number(right),
+            ) => {
+                Ok(Value::Number(left + right))
+            }
+
+            (_, left, right) => {
+                Err(RuntimeError::TypeError {
+                    message: format!(
+                        "binary operation is not supported for {} and {}",
+                        value_type_name(&left),
+                        value_type_name(&right),
+                    ),
                 })
             }
         }
@@ -789,4 +841,15 @@ fn native_function_name(
     };
 
     Ok(Some(name.clone()))
+}
+
+fn value_type_name(
+    value: &Value,
+) -> &'static str {
+    match value {
+        Value::String(_) => "String",
+        Value::Number(_) => "Number",
+        Value::Boolean(_) => "Boolean",
+        Value::Null => "Null",
+    }
 }

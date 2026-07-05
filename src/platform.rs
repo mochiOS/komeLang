@@ -1,3 +1,5 @@
+use std::io;
+use std::io::Write;
 use kome_runtime::{
     NativeRegistry,
     RuntimeError,
@@ -8,23 +10,31 @@ pub fn native_registry() -> NativeRegistry {
     let mut registry = NativeRegistry::new();
 
     registry.register(
-        "core.write_line",
-        write_line,
+        "core.write",
+        write,
     );
 
     registry
 }
 
-fn write_line(
+fn write(
     arguments: &[Value],
 ) -> Result<Value, RuntimeError> {
     let [value] = arguments else {
         return Err(RuntimeError::native(
-            "core.write_line expects exactly one argument",
+            "core.write expects exactly one argument",
         ));
     };
 
-    println!("{value}");
+    print!("{value}");
+
+    io::stdout()
+        .flush()
+        .map_err(|error| {
+            RuntimeError::native(format!(
+                "failed to flush stdout: {error}"
+            ))
+        })?;
 
     Ok(Value::Null)
 }

@@ -19,4 +19,8 @@ edition = "2024"
 kome_ast = { path = "crates/kome_ast" }
 kome_parser = { path = "crates/kome_parser" }
 kome_semantics = { path = "crates/kome_semantics" }
+
 [dependencies]
+kome_ast.workspace = true
+kome_parser.workspace = true
+kome_semantics.workspace = true

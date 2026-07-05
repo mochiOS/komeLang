@@ -50,8 +50,17 @@ impl ScopeBuilder {
 
     /// Runs name resolution on a parsed [`Module`] and returns the result.
     pub fn resolve(module: &Module) -> NameResolution {
+        Self::resolve_with_builtins(module, &[])
+    }
+
+    pub fn resolve_with_builtins(
+        module: &Module,
+        builtins: &[&str],
+    ) -> NameResolution {
         let mut builder = Self::new();
-        builder.visit_module(module);
+
+        builder.visit_module(module, builtins);
+
         NameResolution {
             scopes: builder.scopes,
             symbols: builder.symbols,
@@ -63,8 +72,21 @@ impl ScopeBuilder {
 
     // -- module visitor --
 
-    fn visit_module(&mut self, module: &Module) {
+    fn visit_module(
+        &mut self,
+        module: &Module,
+        builtins: &[&str],
+    ) {
         self.enter_scope(ScopeKind::Module);
+
+        for name in builtins {
+            self.declare(
+                Span::new(0, 0),
+                Symbol::BuiltinFunction {
+                    name: (*name).to_string(),
+                },
+            );
+        }
 
         for decl in &module.declarations {
             if let Declaration::Use(use_decl) = decl {

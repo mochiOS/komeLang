@@ -311,6 +311,11 @@ dependencies = [
 [[package]]
 name = "komec"
 version = "0.1.0"
+dependencies = [
+ "kome_ast",
+ "kome_parser",
+ "kome_semantics",
+]
 
 [[package]]
 name = "libc"

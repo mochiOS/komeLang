@@ -34,6 +34,7 @@ pub enum Symbol {
     EnumType { name: String, span: Span },
     EnumCase { name: String, span: Span },
     ImportedName { name: String, span: Span },
+    BuiltinFunction { name: String },
 }
 
 impl Symbol {
@@ -46,7 +47,8 @@ impl Symbol {
             | Symbol::Recipe { name, .. }
             | Symbol::EnumType { name, .. }
             | Symbol::EnumCase { name, .. }
-            | Symbol::ImportedName { name, .. } => name,
+            | Symbol::ImportedName { name, .. }
+            | Symbol::BuiltinFunction { name, .. } => name,
         }
     }
 }

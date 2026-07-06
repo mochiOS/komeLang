@@ -1,13 +1,11 @@
 use crate::position::{position_to_byte_offset, span_to_range};
-use kome_ast::declarations::Module;
-use kome_semantics::{
-    resolver::ScopeBuilder,
-    scope::{Reference, SourceId},
-};
-use komec::stdlib::StandardLibrary;
+use kome_ast::Span;
+use kome_ast::declarations::{Declaration, Module, UseImport};
+use kome_semantics::resolver::ScopeBuilder;
+use kome_semantics::scope::Reference;
+use komec::stdlib::{LoadedModule, StandardLibrary};
+use std::path::Path;
 use tower_lsp::lsp_types::{Location, Position, Url};
-
-const DOCUMENT_SOURCE: SourceId = 0;
 
 pub fn definition_at(
     document_uri: &Url,
@@ -19,116 +17,178 @@ pub fn definition_at(
     let byte_offset = position_to_byte_offset(document_source, position)?;
 
     /*
-     * Resolve the application separately first.
-     * This guarantees that the reference under the cursor is selected
-     * from the currently opened document rather than from a standard
-     * library file with overlapping byte spans.
+     * Local definitions do not require the standard library.
      */
     let application_resolution = ScopeBuilder::resolve(&application);
 
-    let target_reference = reference_at_offset(&application_resolution.references, byte_offset)?;
+    if let Some(reference) = reference_at_offset(&application_resolution.references, byte_offset) {
+        if let Some(symbol_id) = reference.resolved_to {
+            let symbol = application_resolution.symbols.get(symbol_id)?;
 
-    /*
-     * A locally resolved symbol can be returned without loading the
-     * standard library.
-     */
-    if let Some(symbol_id) = target_reference.resolved_to {
-        let symbol = application_resolution.symbols.get(symbol_id)?;
+            let definition_span = symbol.definition_span()?;
 
-        let definition_span = symbol.definition_span()?;
-
-        return Some(Location {
-            uri: document_uri.clone(),
-            range: span_to_range(document_source, definition_span),
-        });
+            return Some(Location {
+                uri: document_uri.clone(),
+                range: span_to_range(document_source, definition_span),
+            });
+        }
     }
 
-    /*
-     * Unresolved local references may come from imported modules.
-     */
     let standard_library = StandardLibrary::discover().ok()?;
 
     let standard_modules = standard_library.modules_for(&application).ok()?;
 
-    let mut source_modules: Vec<(SourceId, &Module)> =
-        Vec::with_capacity(standard_modules.len() + 1);
-
-    for (index, loaded) in standard_modules.iter().enumerate() {
-        source_modules.push((index + 1, &loaded.module));
+    /*
+     * Import paths are not ordinary name references.
+     */
+    if let Some(location) = import_definition_at(
+        &application,
+        byte_offset,
+        &standard_library,
+        &standard_modules,
+    ) {
+        return Some(location);
     }
 
-    source_modules.push((DOCUMENT_SOURCE, &application));
-
-    let resolution = ScopeBuilder::resolve_sources(&source_modules);
+    let target_reference = reference_at_offset(&application_resolution.references, byte_offset)?;
 
     /*
-     * Match the same application reference in the multi-source
-     * resolution result.
+     * Imported symbols are looked up directly in the loaded module
+     * ASTs. This avoids losing source-file identity while modules are
+     * combined for semantic analysis.
      */
-    let resolved_reference = resolution
-        .references
-        .iter()
-        .find(|reference| {
-            reference.source == Option::from(DOCUMENT_SOURCE)
-                && reference.span == target_reference.span
-                && reference.name == target_reference.name
-        })
-        /*
-         * Keep a fallback while SourceId propagation is still
-         * being stabilized.
-         */
-        .or_else(|| {
-            resolution.references.iter().find(|reference| {
-                reference.span == target_reference.span && reference.name == target_reference.name
-            })
-        })?;
+    standard_symbol_definition(&target_reference.name, &standard_modules)
+}
 
-    let symbol_id = resolved_reference.resolved_to?;
+fn standard_symbol_definition(name: &str, modules: &[LoadedModule]) -> Option<Location> {
+    for loaded in modules {
+        let Some(definition_span) = find_top_level_definition(&loaded.module, name) else {
+            continue;
+        };
 
-    let symbol = resolution.symbols.get(symbol_id)?;
-
-    let definition_span = symbol.definition_span()?;
-
-    let source_id = resolution
-        .symbol_sources
-        .get(symbol_id)
-        .copied()
-        .flatten()?;
-
-    if source_id == DOCUMENT_SOURCE {
-        return Some(Location {
-            uri: document_uri.clone(),
-            range: span_to_range(document_source, definition_span),
-        });
+        return loaded_location(loaded, definition_span);
     }
 
-    let loaded = standard_modules.get(source_id - 1)?;
+    None
+}
 
-    let definition_path = loaded.path.canonicalize().ok()?;
+fn find_top_level_definition(module: &Module, name: &str) -> Option<Span> {
+    module
+        .declarations
+        .iter()
+        .find_map(|declaration| match declaration {
+            Declaration::Function(function) if function.name == name => Some(function.span),
 
-    let uri = Url::from_file_path(definition_path).ok()?;
+            Declaration::Component(component) if component.name == name => Some(component.span),
 
-    Some(Location {
-        uri,
-        range: span_to_range(&loaded.source, definition_span),
+            Declaration::Enum(enum_declaration) if enum_declaration.name == name => {
+                Some(enum_declaration.span)
+            }
+
+            _ => None,
+        })
+}
+
+fn import_definition_at(
+    application: &Module,
+    byte_offset: usize,
+    standard_library: &StandardLibrary,
+    modules: &[LoadedModule],
+) -> Option<Location> {
+    for declaration in &application.declarations {
+        let Declaration::Use(use_declaration) = declaration else {
+            continue;
+        };
+
+        for import in &use_declaration.imports {
+            let UseImport::Module(path) = import else {
+                continue;
+            };
+
+            if !span_contains_cursor(path.span, byte_offset) {
+                continue;
+            }
+
+            let segments = path
+                .segments
+                .iter()
+                .map(|segment| segment.name.as_str())
+                .collect::<Vec<_>>();
+
+            if segments.first().copied() != Some("std") {
+                continue;
+            }
+
+            let loaded = find_imported_module(standard_library.root(), modules, &segments)?;
+
+            return loaded_location(loaded, Span::new(0, 0));
+        }
+    }
+
+    None
+}
+
+fn find_imported_module<'a>(
+    standard_library_root: &Path,
+    modules: &'a [LoadedModule],
+    segments: &[&str],
+) -> Option<&'a LoadedModule> {
+    let module_segments = segments.get(1..)?;
+
+    if module_segments.is_empty() {
+        return modules
+            .iter()
+            .find(|loaded| loaded.path == standard_library_root.join("prelude.kome"));
+    }
+
+    let mut module_base = standard_library_root.to_path_buf();
+
+    for segment in module_segments {
+        module_base.push(segment);
+    }
+
+    let file_candidate = module_base.with_extension("kome");
+
+    let directory_candidate = module_base.join("mod.kome");
+
+    modules.iter().find(|loaded| {
+        paths_equal(&loaded.path, &file_candidate)
+            || paths_equal(&loaded.path, &directory_candidate)
     })
 }
 
-fn reference_at_offset<'a>(
-    references: &'a [Reference],
-    byte_offset: usize,
-) -> Option<&'a Reference> {
+fn paths_equal(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+
+        _ => left == right,
+    }
+}
+
+fn loaded_location(loaded: &LoadedModule, span: Span) -> Option<Location> {
+    let path = loaded.path.canonicalize().ok()?;
+
+    let uri = Url::from_file_path(path).ok()?;
+
+    Some(Location {
+        uri,
+        range: span_to_range(&loaded.source, span),
+    })
+}
+
+fn reference_at_offset(references: &[Reference], byte_offset: usize) -> Option<&Reference> {
     references
         .iter()
-        .filter(|reference| {
-            span_contains_offset(reference, byte_offset)
-                || byte_offset
-                    .checked_sub(1)
-                    .is_some_and(|previous| span_contains_offset(reference, previous))
-        })
+        .filter(|reference| span_contains_cursor(reference.span, byte_offset))
         .min_by_key(|reference| reference.span.end.saturating_sub(reference.span.start))
 }
 
-fn span_contains_offset(reference: &Reference, byte_offset: usize) -> bool {
-    reference.span.start <= byte_offset && byte_offset < reference.span.end
+fn span_contains_cursor(span: Span, byte_offset: usize) -> bool {
+    if span.start <= byte_offset && byte_offset < span.end {
+        return true;
+    }
+
+    byte_offset
+        .checked_sub(1)
+        .is_some_and(|previous| span.start <= previous && previous < span.end)
 }

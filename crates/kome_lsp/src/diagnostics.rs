@@ -1,10 +1,11 @@
+use crate::position::span_to_range;
 use kome_ast::Span;
+use kome_ast::declarations::{Declaration, Module, UseImport};
 use kome_parser::{FrontendError, LexError, LexErrorKind, ParseError, ParseErrorKind};
 use kome_semantics::error::ResolutionError;
 use kome_semantics::resolver::ScopeBuilder;
+use komec::stdlib::StandardLibrary;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
-
-use crate::position::span_to_range;
 
 /// Runs both syntax and semantic diagnostics on a Kome source file.
 ///
@@ -13,13 +14,41 @@ use crate::position::span_to_range;
 pub fn syntax_diagnostics(source: &str) -> Vec<Diagnostic> {
     match kome_parser::parse(source) {
         Ok(module) => {
+            let std_import_span = standard_library_import_span(&module);
+
+            let module = match StandardLibrary::discover() {
+                Ok(standard_library) => match standard_library.merge_with_imports(module) {
+                    Ok(module) => module,
+
+                    Err(error) => {
+                        return vec![standard_library_error_to_diagnostic(
+                            source,
+                            std_import_span.unwrap_or(Span::new(0, 0)),
+                            error,
+                        )];
+                    }
+                },
+
+                Err(error) if std_import_span.is_some() => {
+                    return vec![standard_library_error_to_diagnostic(
+                        source,
+                        std_import_span.unwrap(),
+                        error,
+                    )];
+                }
+
+                Err(_) => module,
+            };
+
             let resolution = ScopeBuilder::resolve(&module);
+
             resolution
                 .errors
                 .iter()
-                .map(|e| resolution_error_to_diagnostic(source, e))
+                .map(|error| resolution_error_to_diagnostic(source, error))
                 .collect()
         }
+
         Err(error) => {
             vec![frontend_error_to_diagnostic(source, error)]
         }
@@ -124,5 +153,49 @@ pub fn frontend_error_span(error: &FrontendError) -> Span {
     match error {
         FrontendError::Lex(error) => error.span,
         FrontendError::Parse(error) => error.span,
+    }
+}
+
+fn standard_library_import_span(module: &Module) -> Option<Span> {
+    for declaration in &module.declarations {
+        let Declaration::Use(use_declaration) = declaration else {
+            continue;
+        };
+
+        for import in &use_declaration.imports {
+            let UseImport::Module(path) = import else {
+                continue;
+            };
+
+            let is_std = path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.name == "std");
+
+            if is_std {
+                return Some(path.span);
+            }
+        }
+    }
+
+    None
+}
+
+fn standard_library_error_to_diagnostic(source: &str, span: Span, error: String) -> Diagnostic {
+    Diagnostic {
+        range: span_to_range(source, span),
+
+        severity: Some(DiagnosticSeverity::ERROR),
+
+        code: None,
+        code_description: None,
+
+        source: Some("kome".to_owned()),
+
+        message: format!("failed to resolve standard library: {error}",),
+
+        related_information: None,
+        tags: None,
+        data: None,
     }
 }

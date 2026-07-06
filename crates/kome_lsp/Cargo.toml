@@ -13,6 +13,8 @@ kome_ast.workspace = true
 kome_parser.workspace = true
 kome_semantics.workspace = true
 
+komec = { path = "../.." }
+
 tokio = {
   version = "1",
   features = [

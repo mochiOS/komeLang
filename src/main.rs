@@ -1,10 +1,10 @@
 mod platform;
 mod stdlib;
 
-use crate::stdlib::StandardLibrary;
 use kome_ast::declarations::Module;
 use kome_runtime::Interpreter;
 use kome_semantics::{error::ResolutionError, resolver::ScopeBuilder};
+use komec::stdlib::StandardLibrary;
 use std::{env, fs, path::Path, process::ExitCode};
 
 const USAGE: &str = "usage: komec <check|run> <file>";
@@ -103,7 +103,7 @@ fn run_program(path: &Path) -> Result<(), String> {
 }
 
 fn load_checked_module(path: &Path) -> Result<Module, String> {
-    let standard_library = StandardLibrary::load_from_env()?;
+    let standard_library = StandardLibrary::discover()?;
 
     let prelude_resolution = ScopeBuilder::resolve(standard_library.prelude());
 
@@ -122,7 +122,7 @@ fn load_checked_module(path: &Path) -> Result<Module, String> {
     let application =
         kome_parser::parse(&source).map_err(|error| format!("{}: {error}", path.display()))?;
 
-    let module = standard_library.merge_with(application);
+    let module = standard_library.merge_with_imports(application)?;
 
     let resolution = ScopeBuilder::resolve(&module);
 

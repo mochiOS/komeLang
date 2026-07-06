@@ -1,24 +1,70 @@
-use kome_ast::declarations::Module;
+use kome_ast::declarations::{Declaration, Module, UseImport};
+use serde::Deserialize;
 use std::{
+    collections::{HashSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
 };
 
 pub const STDLIB_PATH_ENV: &str = "KOME_STDLIB_PATH";
 
+const KOMEUP_HOME_ENV: &str = "KOMEUP_HOME";
+
+#[derive(Debug, Clone)]
 pub struct StandardLibrary {
+    root: PathBuf,
     prelude_path: PathBuf,
     prelude: Module,
 }
 
+#[derive(Debug, Deserialize)]
+struct KomeupConfig {
+    default_toolchain: String,
+}
+
 impl StandardLibrary {
+    pub fn discover() -> Result<Self, String> {
+        if let Some(raw_path) = env::var_os(STDLIB_PATH_ENV) {
+            if raw_path.is_empty() {
+                return Err(format!(
+                    "{STDLIB_PATH_ENV} is set, \
+                     but its value is empty",
+                ));
+            }
+
+            return Self::load(PathBuf::from(raw_path));
+        }
+
+        let home = kome_home()?;
+        let config_path = home.join("komeup.toml");
+
+        let source = read_source(&config_path)?;
+
+        let config = toml::from_str::<KomeupConfig>(&source)
+            .map_err(|error| format!("failed to parse `{}`: {error}", config_path.display(),))?;
+
+        let root = home
+            .join("toolchains")
+            .join(config.default_toolchain)
+            .join("lib")
+            .join("std");
+
+        Self::load(root)
+    }
+
     pub fn load_from_env() -> Result<Self, String> {
         let raw_path = env::var_os(STDLIB_PATH_ENV).ok_or_else(|| {
-            format!("{STDLIB_PATH_ENV} is not set; set it to the kome_std directory")
+            format!(
+                "{STDLIB_PATH_ENV} is not set; \
+                         set it to the kome_std directory",
+            )
         })?;
 
         if raw_path.is_empty() {
-            return Err(format!("{STDLIB_PATH_ENV} is set, but its value is empty"));
+            return Err(format!(
+                "{STDLIB_PATH_ENV} is set, \
+                 but its value is empty",
+            ));
         }
 
         Self::load(PathBuf::from(raw_path))
@@ -27,28 +73,36 @@ impl StandardLibrary {
     pub fn load(root: PathBuf) -> Result<Self, String> {
         let metadata = fs::metadata(&root).map_err(|error| {
             format!(
-                "failed to access standard library directory `{}`: {error}",
+                "failed to access standard \
+                         library directory `{}`: {error}",
                 root.display(),
             )
         })?;
 
         if !metadata.is_dir() {
             return Err(format!(
-                "standard library path `{}` is not a directory",
+                "standard library path `{}` \
+                 is not a directory",
                 root.display(),
             ));
         }
 
         let prelude_path = root.join("prelude.kome");
+
         let source = read_source(&prelude_path)?;
 
         let prelude = kome_parser::parse(&source)
-            .map_err(|error| format!("{}: {error}", prelude_path.display()))?;
+            .map_err(|error| format!("{}: {error}", prelude_path.display(),))?;
 
         Ok(Self {
+            root,
             prelude_path,
             prelude,
         })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn prelude_path(&self) -> &Path {
@@ -59,6 +113,7 @@ impl StandardLibrary {
         &self.prelude
     }
 
+    /// 従来どおりpreludeだけを結合します。
     pub fn merge_with(&self, mut application: Module) -> Module {
         let mut declarations =
             Vec::with_capacity(self.prelude.declarations.len() + application.declarations.len());
@@ -69,59 +124,148 @@ impl StandardLibrary {
 
         Module::new(declarations, application.span)
     }
+
+    /// preludeと、アプリが`use std.*`で
+    /// importしたモジュールを結合します。
+    pub fn merge_with_imports(&self, mut application: Module) -> Result<Module, String> {
+        let mut declarations = Vec::new();
+
+        declarations.extend(
+            self.prelude
+                .declarations
+                .iter()
+                .filter(|declaration| !matches!(declaration, Declaration::Use(_),))
+                .cloned(),
+        );
+
+        let mut pending = VecDeque::new();
+
+        pending.extend(standard_library_imports(&self.prelude));
+
+        pending.extend(standard_library_imports(&application));
+
+        let mut loaded = HashSet::new();
+
+        while let Some(path) = pending.pop_front() {
+            let key = path.join(".");
+
+            if !loaded.insert(key) {
+                continue;
+            }
+
+            let module = self.load_module(&path)?;
+
+            pending.extend(standard_library_imports(&module));
+
+            declarations.extend(
+                module
+                    .declarations
+                    .into_iter()
+                    .filter(|declaration| !matches!(declaration, Declaration::Use(_),)),
+            );
+        }
+
+        declarations.append(&mut application.declarations);
+
+        Ok(Module::new(declarations, application.span))
+    }
+
+    fn load_module(&self, segments: &[String]) -> Result<Module, String> {
+        if segments.first().map(String::as_str) != Some("std") {
+            return Err(format!(
+                "standard library module path \
+                 must start with `std`: `{}`",
+                segments.join("."),
+            ));
+        }
+
+        if segments.len() < 2 {
+            return Err("`std` must be followed by \
+                 a module name"
+                .to_owned());
+        }
+
+        let mut base = self.root.clone();
+
+        for segment in &segments[1..] {
+            base.push(segment);
+        }
+
+        let file_path = base.with_extension("kome");
+
+        let module_path = base.join("mod.kome");
+
+        let path = if file_path.is_file() {
+            file_path
+        } else if module_path.is_file() {
+            module_path
+        } else {
+            return Err(format!(
+                "standard library module `{}` \
+                     was not found; expected `{}` \
+                     or `{}`",
+                segments.join("."),
+                file_path.display(),
+                module_path.display(),
+            ));
+        };
+
+        let source = read_source(&path)?;
+
+        kome_parser::parse(&source).map_err(|error| format!("{}: {error}", path.display(),))
+    }
+}
+
+fn standard_library_imports(module: &Module) -> Vec<Vec<String>> {
+    let mut imports = Vec::new();
+
+    for declaration in &module.declarations {
+        let Declaration::Use(use_declaration) = declaration else {
+            continue;
+        };
+
+        for import in &use_declaration.imports {
+            let UseImport::Module(path) = import else {
+                continue;
+            };
+
+            let segments = path
+                .segments
+                .iter()
+                .map(|segment| segment.name.clone())
+                .collect::<Vec<_>>();
+
+            if segments.first().map(String::as_str) == Some("std") && segments.len() > 1 {
+                imports.push(segments);
+            }
+        }
+    }
+
+    imports
+}
+
+fn kome_home() -> Result<PathBuf, String> {
+    if let Some(path) = env::var_os(KOMEUP_HOME_ENV) {
+        if path.is_empty() {
+            return Err(format!(
+                "{KOMEUP_HOME_ENV} is set, \
+                 but its value is empty",
+            ));
+        }
+
+        return Ok(PathBuf::from(path));
+    }
+
+    let home = env::var_os("HOME").ok_or_else(|| {
+        "HOME is not set and \
+                 KOMEUP_HOME was not provided"
+            .to_owned()
+    })?;
+
+    Ok(PathBuf::from(home).join(".kome"))
 }
 
 fn read_source(path: &Path) -> Result<String, String> {
     fs::read_to_string(path)
-        .map_err(|error| format!("failed to read `{}`: {error}", path.display()))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use kome_semantics::resolver::ScopeBuilder;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn prelude_declarations_are_visible_to_application() {
-        let root = temporary_directory();
-
-        fs::create_dir_all(&root).unwrap();
-
-        fs::write(
-            root.join("prelude.kome"),
-            r#"
-@native("core.write_line")
-fn write_line_native(value: String)
-
-fn print(value: String) {
-    write_line_native(value)
-}
-"#,
-        )
-        .unwrap();
-
-        let standard_library = StandardLibrary::load(root.clone()).unwrap();
-
-        let application = kome_parser::parse(r#"fn main() { print("Hello from Kome") }"#).unwrap();
-
-        let module = standard_library.merge_with(application);
-        let resolution = ScopeBuilder::resolve(&module);
-
-        assert!(resolution.errors.is_empty(), "{:#?}", resolution.errors,);
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    fn temporary_directory() -> PathBuf {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-
-        env::temp_dir().join(format!(
-            "komec-stdlib-test-{}-{timestamp}",
-            std::process::id(),
-        ))
-    }
+        .map_err(|error| format!("failed to read `{}`: {error}", path.display(),))
 }

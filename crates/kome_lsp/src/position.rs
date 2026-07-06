@@ -32,6 +32,44 @@ pub fn byte_offset_to_position(source: &str, byte_offset: usize) -> Position {
     Position { line, character }
 }
 
+pub fn position_to_byte_offset(source: &str, position: Position) -> Option<usize> {
+    let mut line_start = 0usize;
+
+    for _ in 0..position.line {
+        let newline = source[line_start..].find('\n')?;
+
+        line_start += newline + 1;
+    }
+
+    let line_end = source[line_start..]
+        .find('\n')
+        .map(|offset| line_start + offset)
+        .unwrap_or(source.len());
+
+    let line = &source[line_start..line_end];
+    let mut utf16_offset = 0u32;
+
+    for (byte_offset, character) in line.char_indices() {
+        if utf16_offset >= position.character {
+            return Some(line_start + byte_offset);
+        }
+
+        let next = utf16_offset + character.len_utf16() as u32;
+
+        if position.character < next {
+            return Some(line_start + byte_offset);
+        }
+
+        utf16_offset = next;
+    }
+
+    if position.character <= utf16_offset {
+        Some(line_end)
+    } else {
+        None
+    }
+}
+
 fn normalize_span(source: &str, span: Span) -> Span {
     let start = clamp_to_char_boundary(source, span.start);
     let end = clamp_to_char_boundary(source, span.end);

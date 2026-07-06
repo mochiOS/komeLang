@@ -10,16 +10,23 @@ pub const STDLIB_PATH_ENV: &str = "KOME_STDLIB_PATH";
 
 const KOMEUP_HOME_ENV: &str = "KOMEUP_HOME";
 
-#[derive(Debug, Clone)]
 pub struct StandardLibrary {
     root: PathBuf,
     prelude_path: PathBuf,
+    prelude_source: String,
     prelude: Module,
 }
 
 #[derive(Debug, Deserialize)]
 struct KomeupConfig {
     default_toolchain: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoadedModule {
+    pub path: PathBuf,
+    pub source: String,
+    pub module: Module,
 }
 
 impl StandardLibrary {
@@ -89,16 +96,49 @@ impl StandardLibrary {
 
         let prelude_path = root.join("prelude.kome");
 
-        let source = read_source(&prelude_path)?;
+        let prelude_source = read_source(&prelude_path)?;
 
-        let prelude = kome_parser::parse(&source)
+        let prelude = kome_parser::parse(&prelude_source)
             .map_err(|error| format!("{}: {error}", prelude_path.display(),))?;
 
         Ok(Self {
             root,
             prelude_path,
+            prelude_source,
             prelude,
         })
+    }
+
+    pub fn modules_for(&self, application: &Module) -> Result<Vec<LoadedModule>, String> {
+        let mut modules = vec![LoadedModule {
+            path: self.prelude_path.clone(),
+            source: self.prelude_source.clone(),
+            module: self.prelude.clone(),
+        }];
+
+        let mut pending = VecDeque::new();
+
+        pending.extend(standard_library_imports(&self.prelude));
+
+        pending.extend(standard_library_imports(application));
+
+        let mut loaded = HashSet::new();
+
+        while let Some(path) = pending.pop_front() {
+            let key = path.join(".");
+
+            if !loaded.insert(key) {
+                continue;
+            }
+
+            let loaded_module = self.load_module(&path)?;
+
+            pending.extend(standard_library_imports(&loaded_module.module));
+
+            modules.push(loaded_module);
+        }
+
+        Ok(modules)
     }
 
     pub fn root(&self) -> &Path {
@@ -128,37 +168,14 @@ impl StandardLibrary {
     /// preludeと、アプリが`use std.*`で
     /// importしたモジュールを結合します。
     pub fn merge_with_imports(&self, mut application: Module) -> Result<Module, String> {
+        let modules = self.modules_for(&application)?;
+
         let mut declarations = Vec::new();
 
-        declarations.extend(
-            self.prelude
-                .declarations
-                .iter()
-                .filter(|declaration| !matches!(declaration, Declaration::Use(_),))
-                .cloned(),
-        );
-
-        let mut pending = VecDeque::new();
-
-        pending.extend(standard_library_imports(&self.prelude));
-
-        pending.extend(standard_library_imports(&application));
-
-        let mut loaded = HashSet::new();
-
-        while let Some(path) = pending.pop_front() {
-            let key = path.join(".");
-
-            if !loaded.insert(key) {
-                continue;
-            }
-
-            let module = self.load_module(&path)?;
-
-            pending.extend(standard_library_imports(&module));
-
+        for loaded in modules {
             declarations.extend(
-                module
+                loaded
+                    .module
                     .declarations
                     .into_iter()
                     .filter(|declaration| !matches!(declaration, Declaration::Use(_),)),
@@ -170,7 +187,7 @@ impl StandardLibrary {
         Ok(Module::new(declarations, application.span))
     }
 
-    fn load_module(&self, segments: &[String]) -> Result<Module, String> {
+    fn load_module(&self, segments: &[String]) -> Result<LoadedModule, String> {
         if segments.first().map(String::as_str) != Some("std") {
             return Err(format!(
                 "standard library module path \
@@ -212,7 +229,14 @@ impl StandardLibrary {
 
         let source = read_source(&path)?;
 
-        kome_parser::parse(&source).map_err(|error| format!("{}: {error}", path.display(),))
+        let module =
+            kome_parser::parse(&source).map_err(|error| format!("{}: {error}", path.display(),))?;
+
+        Ok(LoadedModule {
+            path,
+            source,
+            module,
+        })
     }
 }
 

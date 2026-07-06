@@ -1,4 +1,8 @@
+use kome_lsp::definition::definition_at;
 use kome_lsp::diagnostics::syntax_diagnostics;
+use std::collections::HashMap;
+use tokio::sync::RwLock;
+use tower_lsp::lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, OneOf};
 use tower_lsp::{
     Client, LanguageServer, LspService, Server,
     jsonrpc::Result,
@@ -12,6 +16,7 @@ use tower_lsp::{
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    documents: RwLock<HashMap<Url, String>>,
 }
 
 impl Backend {
@@ -34,11 +39,16 @@ impl LanguageServer for Backend {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 position_encoding: Some(PositionEncodingKind::UTF16),
+
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+
+                definition_provider: Some(OneOf::Left(true)),
+
                 ..ServerCapabilities::default()
             },
+
             server_info: Some(ServerInfo {
                 name: "kome-lsp".to_owned(),
                 version: Some(env!("CARGO_PKG_VERSION").to_owned()),
@@ -59,6 +69,11 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let document = params.text_document;
 
+        self.documents
+            .write()
+            .await
+            .insert(document.uri.clone(), document.text.clone());
+
         self.publish_syntax_diagnostics(document.uri, &document.text, Some(document.version))
             .await;
     }
@@ -68,16 +83,42 @@ impl LanguageServer for Backend {
             return;
         };
 
-        self.publish_syntax_diagnostics(
-            params.text_document.uri,
-            &change.text,
-            Some(params.text_document.version),
-        )
-        .await;
+        let uri = params.text_document.uri;
+
+        self.documents
+            .write()
+            .await
+            .insert(uri.clone(), change.text.clone());
+
+        self.publish_syntax_diagnostics(uri, &change.text, Some(params.text_document.version))
+            .await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.clear_diagnostics(params.text_document.uri).await;
+        let uri = params.text_document.uri;
+
+        self.documents.write().await.remove(&uri);
+
+        self.clear_diagnostics(uri).await;
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+
+        let position = params.text_document_position_params.position;
+
+        let documents = self.documents.read().await;
+
+        let Some(source) = documents.get(&uri) else {
+            return Ok(None);
+        };
+
+        let definition = definition_at(&uri, source, position);
+
+        Ok(definition.map(GotoDefinitionResponse::Scalar))
     }
 }
 
@@ -86,7 +127,10 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
+    let (service, socket) = LspService::new(|client| Backend {
+        client,
+        documents: RwLock::new(HashMap::new()),
+    });
 
     Server::new(stdin, stdout, socket).serve(service).await;
 }

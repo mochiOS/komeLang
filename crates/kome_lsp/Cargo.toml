@@ -21,6 +21,7 @@ tokio = {
     "io-std",
     "macros",
     "rt-multi-thread",
+    "sync"
   ],
 }
 

@@ -1,5 +1,7 @@
 use crate::error::ResolutionError;
-use crate::scope::{NameResolution, Reference, Scope, ScopeId, ScopeKind, Symbol, SymbolId};
+use crate::scope::{
+    NameResolution, Reference, Scope, ScopeId, ScopeKind, SourceId, Symbol, SymbolId,
+};
 use kome_ast::Span;
 use kome_ast::declarations::UseImport;
 use kome_ast::{
@@ -28,11 +30,13 @@ use kome_ast::{
 pub struct ScopeBuilder {
     scopes: Vec<Scope>,
     symbols: Vec<Symbol>,
+    symbol_sources: Vec<Option<SourceId>>,
     references: Vec<Reference>,
     errors: Vec<ResolutionError>,
     scope_stack: Vec<ScopeId>,
     next_scope_id: usize,
     next_symbol_id: usize,
+    current_source: SourceId,
 }
 
 impl ScopeBuilder {
@@ -40,27 +44,41 @@ impl ScopeBuilder {
         Self {
             scopes: Vec::new(),
             symbols: Vec::new(),
+            symbol_sources: Vec::new(),
             references: Vec::new(),
             errors: Vec::new(),
             scope_stack: Vec::new(),
             next_scope_id: 0,
             next_symbol_id: 0,
+            current_source: 0,
         }
     }
 
     /// Runs name resolution on a parsed [`Module`] and returns the result.
     pub fn resolve(module: &Module) -> NameResolution {
-        Self::resolve_with_builtins(module, &[])
+        Self::resolve_sources_with_builtins(&[(0, module)], &[])
     }
 
     pub fn resolve_with_builtins(module: &Module, builtins: &[&str]) -> NameResolution {
+        Self::resolve_sources_with_builtins(&[(0, module)], builtins)
+    }
+
+    pub fn resolve_sources(sources: &[(SourceId, &Module)]) -> NameResolution {
+        Self::resolve_sources_with_builtins(sources, &[])
+    }
+
+    pub fn resolve_sources_with_builtins(
+        sources: &[(SourceId, &Module)],
+        builtins: &[&str],
+    ) -> NameResolution {
         let mut builder = Self::new();
 
-        builder.visit_module(module, builtins);
+        builder.visit_sources(sources, builtins);
 
         NameResolution {
             scopes: builder.scopes,
             symbols: builder.symbols,
+            symbol_sources: builder.symbol_sources,
             references: builder.references,
             errors: builder.errors,
             root: 0,
@@ -69,20 +87,45 @@ impl ScopeBuilder {
 
     // -- module visitor --
 
-    fn visit_module(&mut self, module: &Module, builtins: &[&str]) {
+    fn visit_sources(&mut self, sources: &[(SourceId, &Module)], builtins: &[&str]) {
         self.enter_scope(ScopeKind::Module);
 
         for name in builtins {
             self.declare(
                 Span::new(0, 0),
                 Symbol::BuiltinFunction {
-                    name: (*name).to_string(),
+                    name: (*name).to_owned(),
                 },
             );
         }
 
-        for decl in &module.declarations {
-            let Declaration::Use(use_declaration) = decl else {
+        /*
+         * Register imports before visiting declarations so imported names
+         * are visible from every source participating in this resolution.
+         */
+        for &(source, module) in sources {
+            self.current_source = source;
+            self.register_module_imports(module);
+        }
+
+        /*
+         * Standard-library modules must be placed before the application
+         * module so application references can resolve to their exports.
+         */
+        for &(source, module) in sources {
+            self.current_source = source;
+
+            for declaration in &module.declarations {
+                self.visit_top_level_declaration(declaration);
+            }
+        }
+
+        self.exit_scope();
+    }
+
+    fn register_module_imports(&mut self, module: &Module) {
+        for declaration in &module.declarations {
+            let Declaration::Use(use_declaration) = declaration else {
                 continue;
             };
 
@@ -91,6 +134,11 @@ impl ScopeBuilder {
                     continue;
                 };
 
+                /*
+                 * A single-segment import introduces a module name.
+                 * Dotted standard-library imports are expanded by the
+                 * module loader instead.
+                 */
                 if path.segments.len() != 1 {
                     continue;
                 }
@@ -101,18 +149,11 @@ impl ScopeBuilder {
                     segment.span,
                     Symbol::ImportedName {
                         name: segment.name.clone(),
-
                         span: segment.span,
                     },
                 );
             }
         }
-
-        for decl in &module.declarations {
-            self.visit_top_level_declaration(decl);
-        }
-
-        self.exit_scope();
     }
 
     // -- declaration visitors --
@@ -613,15 +654,18 @@ impl ScopeBuilder {
 
     fn record_reference(&mut self, name: &str, span: Span) {
         let resolved = self.resolve_name(name);
+
         if resolved.is_none() {
             self.errors.push(ResolutionError::UndefinedName {
-                name: name.to_string(),
+                name: name.to_owned(),
                 span,
             });
         }
+
         self.references.push(Reference {
+            source: Option::from(self.current_source),
             span,
-            name: name.to_string(),
+            name: name.to_owned(),
             resolved_to: resolved,
         });
     }

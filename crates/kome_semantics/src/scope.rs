@@ -3,6 +3,7 @@ use kome_ast::Span;
 
 pub type ScopeId = usize;
 pub type SymbolId = usize;
+pub type SourceId = usize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeKind {
@@ -51,6 +52,21 @@ impl Symbol {
             | Symbol::BuiltinFunction { name, .. } => name,
         }
     }
+
+    pub fn definition_span(&self) -> Option<Span> {
+        match self {
+            Self::Component { span, .. }
+            | Self::Function { span, .. }
+            | Self::Parameter { span, .. }
+            | Self::Variable { span, .. }
+            | Self::Recipe { span, .. }
+            | Self::EnumType { span, .. }
+            | Self::EnumCase { span, .. }
+            | Self::ImportedName { span, .. } => Some(*span),
+
+            Self::BuiltinFunction { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,12 +74,19 @@ pub struct Reference {
     pub span: Span,
     pub name: String,
     pub resolved_to: Option<SymbolId>,
+    pub source: Option<SourceId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NameResolution {
     pub scopes: Vec<Scope>,
     pub symbols: Vec<Symbol>,
+
+    /// Source file containing each symbol definition.
+    ///
+    /// The index corresponds to `symbols`.
+    /// Built-in symbols do not have a source file.
+    pub symbol_sources: Vec<Option<SourceId>>,
     pub references: Vec<Reference>,
     pub errors: Vec<ResolutionError>,
     pub root: ScopeId,

@@ -1,0 +1,9 @@
+use std.io
+
+fn greet() {
+    println("Hello")
+}
+
+fn main() {
+    greet()
+}

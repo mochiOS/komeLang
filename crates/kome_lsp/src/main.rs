@@ -110,13 +110,44 @@ impl LanguageServer for Backend {
 
         let position = params.text_document_position_params.position;
 
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "definition request: {}:{}:{}",
+                    uri, position.line, position.character,
+                ),
+            )
+            .await;
+
         let documents = self.documents.read().await;
 
         let Some(source) = documents.get(&uri) else {
+            self.client
+                .log_message(
+                    MessageType::ERROR,
+                    format!("definition failed: document is not cached: {uri}",),
+                )
+                .await;
+
             return Ok(None);
         };
 
         let definition = definition_at(&uri, source, position);
+
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "definition result: {}",
+                    if definition.is_some() {
+                        "found"
+                    } else {
+                        "not found"
+                    },
+                ),
+            )
+            .await;
 
         Ok(definition.map(GotoDefinitionResponse::Scalar))
     }

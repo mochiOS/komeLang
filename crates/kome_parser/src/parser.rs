@@ -3,12 +3,13 @@ use crate::{
     error::{ParseError, ParseErrorKind},
     token::{Token, TokenKind},
 };
+use kome_ast::declarations::{ModulePath, ModulePathSegment, UseImport};
 use kome_ast::{
     AstNode, Span,
     declarations::{
         Attribute, Binding, ComponentDeclaration, ComponentMember, Declaration, EnumCase,
         EnumDeclaration, ExtensionDeclaration, ExtensionMember, FunctionDeclaration, Module,
-        RecipeDeclaration, UseDeclaration, UseSpecifier,
+        RecipeDeclaration, UseDeclaration,
     },
     expressions::{
         AssignOp, AssignmentExpression, BinaryOp, BlockExpression, CallArg, CallExpression,
@@ -1769,40 +1770,64 @@ impl Parser {
             .span
             .start;
 
-        let mut specifiers = vec![self.parse_use_specifier()?];
+        let mut imports = vec![self.parse_use_import()?];
 
         while self.at(|kind| matches!(kind, TokenKind::Comma)) {
             self.advance();
 
-            specifiers.push(self.parse_use_specifier()?);
+            imports.push(self.parse_use_import()?);
         }
 
-        let end = specifiers.last().map(use_specifier_end).unwrap_or(start);
+        let end = imports
+            .last()
+            .map(|import| import.span().end)
+            .unwrap_or(start);
 
         Ok(UseDeclaration {
             span: Span::new(start, end),
-            specifiers,
-            source: None,
+            imports,
         })
     }
 
-    fn parse_use_specifier(&mut self) -> Result<UseSpecifier, ParseError> {
+    fn parse_use_import(&mut self) -> Result<UseImport, ParseError> {
         let token = self.advance();
+        let token_span = token.span;
 
         match token.kind {
-            TokenKind::Star => Ok(UseSpecifier::Wildcard { span: token.span }),
+            TokenKind::Star => Ok(UseImport::Wildcard { span: token_span }),
 
-            TokenKind::Ident(name) => Ok(UseSpecifier::Named {
-                name,
-                span: token.span,
-            }),
+            TokenKind::Ident(name) => {
+                let mut segments = vec![ModulePathSegment {
+                    span: token_span,
+                    name,
+                }];
+
+                let start = token_span.start;
+                let mut end = token_span.end;
+
+                while self.at(|kind| matches!(kind, TokenKind::Dot)) {
+                    self.advance();
+
+                    let (name, span) = self.expect_identifier("a module path segment after `.`")?;
+
+                    end = span.end;
+
+                    segments.push(ModulePathSegment { span, name });
+                }
+
+                Ok(UseImport::Module(ModulePath {
+                    span: Span::new(start, end),
+                    segments,
+                }))
+            }
 
             found => Err(ParseError::new(
                 ParseErrorKind::Expected {
                     expected: "an import name or `*`",
+
                     found,
                 },
-                token.span,
+                token_span,
             )),
         }
     }
@@ -1950,12 +1975,6 @@ impl Parser {
         }
 
         false
-    }
-}
-
-fn use_specifier_end(specifier: &UseSpecifier) -> usize {
-    match specifier {
-        UseSpecifier::Wildcard { span } | UseSpecifier::Named { span, .. } => span.end,
     }
 }
 

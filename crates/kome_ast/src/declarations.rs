@@ -136,24 +136,40 @@ pub struct Binding {
 
 // ---- Use ----
 
-/// A `use` import.
+/// One or more module imports.
 ///
 /// ```kome
-/// use *
+/// use std.io
 /// use viewKit
+/// use collections, io
+/// use *
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct UseDeclaration {
     pub span: Span,
-    pub specifiers: Vec<UseSpecifier>,
-    pub source: Option<String>,
+    pub imports: Vec<UseImport>,
 }
 
-/// One specifier inside a `use` declaration.
+/// One import entry inside a `use` declaration.
 #[derive(Debug, Clone, PartialEq)]
-pub enum UseSpecifier {
+pub enum UseImport {
+    Module(ModulePath),
+
     Wildcard { span: Span },
-    Named { name: String, span: Span },
+}
+
+/// A dot-separated module path such as `std.io`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModulePath {
+    pub span: Span,
+    pub segments: Vec<ModulePathSegment>,
+}
+
+/// One identifier inside a module path.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModulePathSegment {
+    pub span: Span,
+    pub name: String,
 }
 
 // ---- Enum ----
@@ -253,7 +269,28 @@ impl Module {
 
 // ---- AstNode implementations ----
 
-impl AstNode for Module {
+impl AstNode for UseDeclaration {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl AstNode for UseImport {
+    fn span(&self) -> Span {
+        match self {
+            UseImport::Module(path) => path.span,
+            UseImport::Wildcard { span } => *span,
+        }
+    }
+}
+
+impl AstNode for ModulePath {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl AstNode for ModulePathSegment {
     fn span(&self) -> Span {
         self.span
     }
@@ -322,19 +359,5 @@ impl AstNode for EnumDeclaration {
 impl AstNode for EnumCase {
     fn span(&self) -> Span {
         self.span
-    }
-}
-
-impl AstNode for UseDeclaration {
-    fn span(&self) -> Span {
-        self.span
-    }
-}
-
-impl AstNode for UseSpecifier {
-    fn span(&self) -> Span {
-        match self {
-            UseSpecifier::Wildcard { span } | UseSpecifier::Named { span, .. } => *span,
-        }
     }
 }

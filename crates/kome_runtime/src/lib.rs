@@ -1,26 +1,11 @@
-use kome_ast::{
-    declarations::{
-        Declaration,
-        FunctionDeclaration,
-        Module,
-    },
-    expressions::{
-        CallArg,
-        CallExpression,
-        Expression,
-        LiteralKind,
-    },
-    patterns::Pattern,
-    statements::{
-        BlockStatement,
-        Statement,
-    },
-};
-use std::{
-    collections::HashMap,
-    fmt,
-};
 use kome_ast::expressions::{BinaryExpression, BinaryOp};
+use kome_ast::{
+    declarations::{Declaration, FunctionDeclaration, Module},
+    expressions::{CallArg, CallExpression, Expression, LiteralKind},
+    patterns::Pattern,
+    statements::{BlockStatement, Statement},
+};
+use std::{collections::HashMap, fmt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -31,14 +16,9 @@ pub enum Value {
 }
 
 impl fmt::Display for Value {
-    fn fmt(
-        &self,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::String(value) => {
-                formatter.write_str(value)
-            }
+            Self::String(value) => formatter.write_str(value),
 
             Self::Number(value) => {
                 write!(formatter, "{value}")
@@ -48,9 +28,7 @@ impl fmt::Display for Value {
                 write!(formatter, "{value}")
             }
 
-            Self::Null => {
-                formatter.write_str("null")
-            }
+            Self::Null => formatter.write_str("null"),
         }
     }
 }
@@ -112,13 +90,17 @@ pub enum RuntimeError {
 
     TypeError {
         message: String,
-    }
+    },
+
+    InvalidAssignmentTarget,
+
+    ImmutableVariable {
+        name: String,
+    },
 }
 
 impl RuntimeError {
-    pub fn native(
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn native(message: impl Into<String>) -> Self {
         Self::Native {
             message: message.into(),
         }
@@ -126,36 +108,21 @@ impl RuntimeError {
 }
 
 impl fmt::Display for RuntimeError {
-    fn fmt(
-        &self,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateFunction { name } => {
-                write!(
-                    formatter,
-                    "duplicate runtime function `{name}`",
-                )
+                write!(formatter, "duplicate runtime function `{name}`",)
             }
 
             Self::FunctionNotFound { name } => {
-                write!(
-                    formatter,
-                    "function `{name}` was not found",
-                )
+                write!(formatter, "function `{name}` was not found",)
             }
 
             Self::MissingFunctionBody { name } => {
-                write!(
-                    formatter,
-                    "function `{name}` has no body",
-                )
+                write!(formatter, "function `{name}` has no body",)
             }
 
-            Self::InvalidNativeAttribute {
-                function,
-                message,
-            } => {
+            Self::InvalidNativeAttribute { function, message } => {
                 write!(
                     formatter,
                     "invalid @native attribute on `{function}`: {message}",
@@ -163,10 +130,7 @@ impl fmt::Display for RuntimeError {
             }
 
             Self::NativeFunctionNotFound { name } => {
-                write!(
-                    formatter,
-                    "native function `{name}` is not registered",
-                )
+                write!(formatter, "native function `{name}` is not registered",)
             }
 
             Self::ArgumentCount {
@@ -181,9 +145,7 @@ impl fmt::Display for RuntimeError {
                 )
             }
 
-            Self::UnsupportedParameterPattern {
-                function,
-            } => {
+            Self::UnsupportedParameterPattern { function } => {
                 write!(
                     formatter,
                     "function `{function}` contains an unsupported parameter pattern",
@@ -191,48 +153,35 @@ impl fmt::Display for RuntimeError {
             }
 
             Self::UnsupportedExpression { kind } => {
-                write!(
-                    formatter,
-                    "expression `{kind}` is not supported yet",
-                )
+                write!(formatter, "expression `{kind}` is not supported yet",)
             }
 
             Self::UnsupportedStatement { kind } => {
-                write!(
-                    formatter,
-                    "statement `{kind}` is not supported yet",
-                )
+                write!(formatter, "statement `{kind}` is not supported yet",)
             }
 
             Self::UndefinedVariable { name } => {
-                write!(
-                    formatter,
-                    "variable `{name}` is not defined",
-                )
+                write!(formatter, "variable `{name}` is not defined",)
             }
 
             Self::InvalidNumber { value } => {
-                write!(
-                    formatter,
-                    "`{value}` is not a valid number",
-                )
+                write!(formatter, "`{value}` is not a valid number",)
             }
 
-            Self::NoActiveScope => {
-                formatter.write_str(
-                    "internal error: no active runtime scope",
-                )
-            }
+            Self::NoActiveScope => formatter.write_str("internal error: no active runtime scope"),
 
             Self::Native { message } => {
-                write!(
-                    formatter,
-                    "native function failed: {message}",
-                )
+                write!(formatter, "native function failed: {message}",)
             }
 
             Self::TypeError { message } => {
                 write!(formatter, "type error: {message}")
+            }
+
+            Self::InvalidAssignmentTarget => formatter.write_str("invalid assignment target"),
+
+            Self::ImmutableVariable { name } => {
+                write!(formatter, "cannot assign to immutable variable `{name}`",)
             }
         }
     }
@@ -240,11 +189,7 @@ impl fmt::Display for RuntimeError {
 
 impl std::error::Error for RuntimeError {}
 
-type NativeFunction =
-dyn Fn(&[Value]) -> Result<Value, RuntimeError>
-+ Send
-+ Sync
-+ 'static;
+type NativeFunction = dyn Fn(&[Value]) -> Result<Value, RuntimeError> + Send + Sync + 'static;
 
 #[derive(Default)]
 pub struct NativeRegistry {
@@ -256,33 +201,20 @@ impl NativeRegistry {
         Self::default()
     }
 
-    pub fn register<F>(
-        &mut self,
-        name: impl Into<String>,
-        function: F,
-    )
+    pub fn register<F>(&mut self, name: impl Into<String>, function: F)
     where
-        F: Fn(&[Value]) -> Result<Value, RuntimeError>
-        + Send
-        + Sync
-        + 'static,
+        F: Fn(&[Value]) -> Result<Value, RuntimeError> + Send + Sync + 'static,
     {
-        self.functions.insert(
-            name.into(),
-            Box::new(function),
-        );
+        self.functions.insert(name.into(), Box::new(function));
     }
 
-    fn call(
-        &self,
-        name: &str,
-        arguments: &[Value],
-    ) -> Result<Value, RuntimeError> {
-        let function = self.functions.get(name).ok_or_else(|| {
-            RuntimeError::NativeFunctionNotFound {
-                name: name.to_string(),
-            }
-        })?;
+    fn call(&self, name: &str, arguments: &[Value]) -> Result<Value, RuntimeError> {
+        let function =
+            self.functions
+                .get(name)
+                .ok_or_else(|| RuntimeError::NativeFunctionNotFound {
+                    name: name.to_string(),
+                })?;
 
         function(arguments)
     }
@@ -295,10 +227,7 @@ pub struct Interpreter<'a> {
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(
-        module: &'a Module,
-        natives: &'a NativeRegistry,
-    ) -> Result<Self, RuntimeError> {
+    pub fn new(module: &'a Module, natives: &'a NativeRegistry) -> Result<Self, RuntimeError> {
         let mut functions = HashMap::new();
 
         for declaration in &module.declarations {
@@ -306,10 +235,7 @@ impl<'a> Interpreter<'a> {
                 continue;
             };
 
-            if functions
-                .insert(function.name.as_str(), function)
-                .is_some()
-            {
+            if functions.insert(function.name.as_str(), function).is_some() {
                 return Err(RuntimeError::DuplicateFunction {
                     name: function.name.clone(),
                 });
@@ -323,10 +249,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    pub fn run_entry(
-        &mut self,
-        name: &str,
-    ) -> Result<Value, RuntimeError> {
+    pub fn run_entry(&mut self, name: &str) -> Result<Value, RuntimeError> {
         if !self.functions.contains_key(name) {
             return Err(RuntimeError::FunctionNotFound {
                 name: name.to_string(),
@@ -336,16 +259,13 @@ impl<'a> Interpreter<'a> {
         self.call_function(name, Vec::new())
     }
 
-    fn call_function(
-        &mut self,
-        name: &str,
-        arguments: Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
-        let function = *self.functions.get(name).ok_or_else(|| {
-            RuntimeError::FunctionNotFound {
+    fn call_function(&mut self, name: &str, arguments: Vec<Value>) -> Result<Value, RuntimeError> {
+        let function = *self
+            .functions
+            .get(name)
+            .ok_or_else(|| RuntimeError::FunctionNotFound {
                 name: name.to_string(),
-            }
-        })?;
+            })?;
 
         if function.params.len() != arguments.len() {
             return Err(RuntimeError::ArgumentCount {
@@ -355,38 +275,27 @@ impl<'a> Interpreter<'a> {
             });
         }
 
-        if let Some(native_name) =
-            native_function_name(function)?
-        {
-            return self.natives.call(
-                &native_name,
-                &arguments,
-            );
+        if let Some(native_name) = native_function_name(function)? {
+            return self.natives.call(&native_name, &arguments);
         }
 
-        let body = function.body.as_ref().ok_or_else(|| {
-            RuntimeError::MissingFunctionBody {
+        let body = function
+            .body
+            .as_ref()
+            .ok_or_else(|| RuntimeError::MissingFunctionBody {
                 name: name.to_string(),
-            }
-        })?;
+            })?;
 
         let mut function_scope = HashMap::new();
 
-        for (parameter, argument) in
-            function.params.iter().zip(arguments)
-        {
+        for (parameter, argument) in function.params.iter().zip(arguments) {
             let Pattern::Ident(parameter) = parameter else {
-                return Err(
-                    RuntimeError::UnsupportedParameterPattern {
-                        function: name.to_string(),
-                    },
-                );
+                return Err(RuntimeError::UnsupportedParameterPattern {
+                    function: name.to_string(),
+                });
             };
 
-            function_scope.insert(
-                parameter.name.clone(),
-                argument,
-            );
+            function_scope.insert(parameter.name.clone(), argument);
         }
 
         self.scopes.push(function_scope);
@@ -401,16 +310,12 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_block(
-        &mut self,
-        block: &BlockStatement,
-    ) -> Result<Flow, RuntimeError> {
+    fn execute_block(&mut self, block: &BlockStatement) -> Result<Flow, RuntimeError> {
         self.scopes.push(HashMap::new());
 
         let result = (|| {
             for statement in &block.statements {
-                let flow =
-                    self.execute_statement(statement)?;
+                let flow = self.execute_statement(statement)?;
 
                 if let Flow::Return(_) = flow {
                     return Ok(flow);
@@ -425,26 +330,19 @@ impl<'a> Interpreter<'a> {
         result
     }
 
-    fn execute_statement(
-        &mut self,
-        statement: &Statement,
-    ) -> Result<Flow, RuntimeError> {
+    fn execute_statement(&mut self, statement: &Statement) -> Result<Flow, RuntimeError> {
         match statement {
             Statement::Empty(_) => Ok(Flow::Next),
 
             Statement::Expression(statement) => {
-                self.evaluate_expression(
-                    &statement.expression,
-                )?;
+                self.evaluate_expression(&statement.expression)?;
 
                 Ok(Flow::Next)
             }
 
             Statement::Return(statement) => {
                 let value = match &statement.argument {
-                    Some(expression) => {
-                        self.evaluate_expression(expression)?
-                    }
+                    Some(expression) => self.evaluate_expression(expression)?,
 
                     None => Value::Null,
                 };
@@ -453,279 +351,150 @@ impl<'a> Interpreter<'a> {
             }
 
             Statement::Let(binding) => {
-                let Pattern::Ident(pattern) =
-                    &binding.pattern
-                else {
-                    return Err(
-                        RuntimeError::UnsupportedStatement {
-                            kind: "destructuring let",
-                        },
-                    );
+                let Pattern::Ident(pattern) = &binding.pattern else {
+                    return Err(RuntimeError::UnsupportedStatement {
+                        kind: "destructuring let",
+                    });
                 };
 
                 let value = match &binding.init {
-                    Some(expression) => {
-                        self.evaluate_expression(expression)?
-                    }
+                    Some(expression) => self.evaluate_expression(expression)?,
 
                     None => Value::Null,
                 };
 
-                self.declare_variable(
-                    pattern.name.clone(),
-                    value,
-                )?;
+                self.declare_variable(pattern.name.clone(), value)?;
 
                 Ok(Flow::Next)
             }
 
-            Statement::Block(block) => {
-                self.execute_block(block)
-            }
+            Statement::Block(block) => self.execute_block(block),
 
-            Statement::If(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "if",
-                })
-            }
+            Statement::If(_) => Err(RuntimeError::UnsupportedStatement { kind: "if" }),
 
-            Statement::While(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "while",
-                })
-            }
+            Statement::While(_) => Err(RuntimeError::UnsupportedStatement { kind: "while" }),
 
-            Statement::ForIn(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "for",
-                })
-            }
+            Statement::ForIn(_) => Err(RuntimeError::UnsupportedStatement { kind: "for" }),
 
-            Statement::Break(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "break",
-                })
-            }
+            Statement::Break(_) => Err(RuntimeError::UnsupportedStatement { kind: "break" }),
 
-            Statement::Continue(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "continue",
-                })
-            }
+            Statement::Continue(_) => Err(RuntimeError::UnsupportedStatement { kind: "continue" }),
 
-            Statement::Is(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "is",
-                })
-            }
+            Statement::Is(_) => Err(RuntimeError::UnsupportedStatement { kind: "is" }),
 
-            Statement::Declaration(_) => {
-                Err(RuntimeError::UnsupportedStatement {
-                    kind: "nested declaration",
-                })
-            }
+            Statement::Declaration(_) => Err(RuntimeError::UnsupportedStatement {
+                kind: "nested declaration",
+            }),
         }
     }
 
-    fn evaluate_expression(
-        &mut self,
-        expression: &Expression,
-    ) -> Result<Value, RuntimeError> {
+    fn evaluate_expression(&mut self, expression: &Expression) -> Result<Value, RuntimeError> {
         match expression {
-            Expression::Literal(literal) => {
-                evaluate_literal(&literal.kind)
-            }
+            Expression::Literal(literal) => evaluate_literal(&literal.kind),
 
-            Expression::Ident(identifier) => {
-                self.lookup_variable(&identifier.name)
-            }
+            Expression::Ident(identifier) => self.lookup_variable(&identifier.name),
 
-            Expression::Call(call) => {
-                self.evaluate_call(call)
-            }
+            Expression::Call(call) => self.evaluate_call(call),
 
-            Expression::Group(group) => {
-                self.evaluate_expression(
-                    &group.expression,
-                )
-            }
+            Expression::Group(group) => self.evaluate_expression(&group.expression),
 
-            Expression::Unary(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "unary",
-                })
-            }
+            Expression::Unary(_) => Err(RuntimeError::UnsupportedExpression { kind: "unary" }),
 
-            Expression::Member(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "member access",
-                })
-            }
+            Expression::Member(_) => Err(RuntimeError::UnsupportedExpression {
+                kind: "member access",
+            }),
 
-            Expression::Index(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "index",
-                })
-            }
+            Expression::Index(_) => Err(RuntimeError::UnsupportedExpression { kind: "index" }),
 
             Expression::Assign(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "assignment",
-                })
+                Err(RuntimeError::UnsupportedExpression { kind: "assignment" })
             }
 
-            Expression::Block(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "block",
-                })
-            }
+            Expression::Block(_) => Err(RuntimeError::UnsupportedExpression { kind: "block" }),
 
-            Expression::List(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "list",
-                })
-            }
+            Expression::List(_) => Err(RuntimeError::UnsupportedExpression { kind: "list" }),
 
-            Expression::Object(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "object",
-                })
-            }
+            Expression::Object(_) => Err(RuntimeError::UnsupportedExpression { kind: "object" }),
 
             Expression::Template(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "template",
-                })
+                Err(RuntimeError::UnsupportedExpression { kind: "template" })
             }
 
-            Expression::Closure(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "closure",
-                })
-            }
+            Expression::Closure(_) => Err(RuntimeError::UnsupportedExpression { kind: "closure" }),
 
-            Expression::Binary(binary) => {
-                self.evaluate_binary(binary)
-            }
+            Expression::Binary(binary) => self.evaluate_binary(binary),
 
-            Expression::DotIdent(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "dot identifier",
-                })
-            }
+            Expression::DotIdent(_) => Err(RuntimeError::UnsupportedExpression {
+                kind: "dot identifier",
+            }),
 
-            Expression::Is(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "is",
-                })
-            }
+            Expression::Is(_) => Err(RuntimeError::UnsupportedExpression { kind: "is" }),
 
             Expression::Component(_) => {
-                Err(RuntimeError::UnsupportedExpression {
-                    kind: "component",
-                })
+                Err(RuntimeError::UnsupportedExpression { kind: "component" })
             }
         }
     }
 
-    fn evaluate_binary(
-        &mut self,
-        binary: &BinaryExpression,
-    ) -> Result<Value, RuntimeError> {
-        let left =
-            self.evaluate_expression(&binary.left)?;
+    fn evaluate_binary(&mut self, binary: &BinaryExpression) -> Result<Value, RuntimeError> {
+        let left = self.evaluate_expression(&binary.left)?;
 
-        let right =
-            self.evaluate_expression(&binary.right)?;
+        let right = self.evaluate_expression(&binary.right)?;
 
         match (&binary.op, left, right) {
-            (
-                BinaryOp::Add,
-                Value::String(left),
-                Value::String(right),
-            ) => {
+            (BinaryOp::Add, Value::String(left), Value::String(right)) => {
                 Ok(Value::String(left + &right))
             }
 
-            (
-                BinaryOp::Add,
-                Value::Number(left),
-                Value::Number(right),
-            ) => {
+            (BinaryOp::Add, Value::Number(left), Value::Number(right)) => {
                 Ok(Value::Number(left + right))
             }
 
-            (_, left, right) => {
-                Err(RuntimeError::TypeError {
-                    message: format!(
-                        "binary operation is not supported for {} and {}",
-                        value_type_name(&left),
-                        value_type_name(&right),
-                    ),
-                })
-            }
+            (_, left, right) => Err(RuntimeError::TypeError {
+                message: format!(
+                    "binary operation is not supported for {} and {}",
+                    value_type_name(&left),
+                    value_type_name(&right),
+                ),
+            }),
         }
     }
 
-    fn evaluate_call(
-        &mut self,
-        call: &CallExpression,
-    ) -> Result<Value, RuntimeError> {
-        let Expression::Ident(callee) =
-            call.callee.as_ref()
-        else {
-            return Err(
-                RuntimeError::UnsupportedExpression {
-                    kind: "non-identifier call",
-                },
-            );
+    fn evaluate_call(&mut self, call: &CallExpression) -> Result<Value, RuntimeError> {
+        let Expression::Ident(callee) = call.callee.as_ref() else {
+            return Err(RuntimeError::UnsupportedExpression {
+                kind: "non-identifier call",
+            });
         };
 
-        let mut arguments =
-            Vec::with_capacity(call.args.len());
+        let mut arguments = Vec::with_capacity(call.args.len());
 
         for argument in &call.args {
             match argument {
                 CallArg::Positional(expression) => {
-                    arguments.push(
-                        self.evaluate_expression(expression)?,
-                    );
+                    arguments.push(self.evaluate_expression(expression)?);
                 }
 
                 CallArg::Named { .. } => {
-                    return Err(
-                        RuntimeError::UnsupportedExpression {
-                            kind: "named argument",
-                        },
-                    );
+                    return Err(RuntimeError::UnsupportedExpression {
+                        kind: "named argument",
+                    });
                 }
             }
         }
 
-        self.call_function(
-            &callee.name,
-            arguments,
-        )
+        self.call_function(&callee.name, arguments)
     }
 
-    fn declare_variable(
-        &mut self,
-        name: String,
-        value: Value,
-    ) -> Result<(), RuntimeError> {
-        let scope = self.scopes.last_mut().ok_or(
-            RuntimeError::NoActiveScope,
-        )?;
+    fn declare_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError> {
+        let scope = self.scopes.last_mut().ok_or(RuntimeError::NoActiveScope)?;
 
         scope.insert(name, value);
 
         Ok(())
     }
 
-    fn lookup_variable(
-        &self,
-        name: &str,
-    ) -> Result<Value, RuntimeError> {
+    fn lookup_variable(&self, name: &str) -> Result<Value, RuntimeError> {
         for scope in self.scopes.iter().rev() {
             if let Some(value) = scope.get(name) {
                 return Ok(value.clone());
@@ -743,43 +512,32 @@ enum Flow {
     Return(Value),
 }
 
-fn evaluate_literal(
-    literal: &LiteralKind,
-) -> Result<Value, RuntimeError> {
+fn evaluate_literal(literal: &LiteralKind) -> Result<Value, RuntimeError> {
     match literal {
-        LiteralKind::String(value) => {
-            Ok(Value::String(value.clone()))
-        }
+        LiteralKind::String(value) => Ok(Value::String(value.clone())),
 
         LiteralKind::Number(value) => {
-            let number = value.0.parse::<f64>().map_err(|_| {
-                RuntimeError::InvalidNumber {
+            let number = value
+                .0
+                .parse::<f64>()
+                .map_err(|_| RuntimeError::InvalidNumber {
                     value: value.0.clone(),
-                }
-            })?;
+                })?;
 
             Ok(Value::Number(number))
         }
 
-        LiteralKind::Boolean(value) => {
-            Ok(Value::Boolean(*value))
-        }
+        LiteralKind::Boolean(value) => Ok(Value::Boolean(*value)),
 
-        LiteralKind::Null => {
-            Ok(Value::Null)
-        }
+        LiteralKind::Null => Ok(Value::Null),
 
-        LiteralKind::Percent(_) => {
-            Err(RuntimeError::UnsupportedExpression {
-                kind: "percent literal",
-            })
-        }
+        LiteralKind::Percent(_) => Err(RuntimeError::UnsupportedExpression {
+            kind: "percent literal",
+        }),
     }
 }
 
-fn native_function_name(
-    function: &FunctionDeclaration,
-) -> Result<Option<String>, RuntimeError> {
+fn native_function_name(function: &FunctionDeclaration) -> Result<Option<String>, RuntimeError> {
     let mut attributes = function
         .attributes
         .iter()
@@ -790,56 +548,37 @@ fn native_function_name(
     };
 
     if attributes.next().is_some() {
-        return Err(
-            RuntimeError::InvalidNativeAttribute {
-                function: function.name.clone(),
-                message: "attribute appears more than once"
-                    .to_string(),
-            },
-        );
+        return Err(RuntimeError::InvalidNativeAttribute {
+            function: function.name.clone(),
+            message: "attribute appears more than once".to_string(),
+        });
     }
 
     if attribute.args.len() != 1 {
-        return Err(
-            RuntimeError::InvalidNativeAttribute {
-                function: function.name.clone(),
-                message:
-                "expected exactly one string argument"
-                    .to_string(),
-            },
-        );
+        return Err(RuntimeError::InvalidNativeAttribute {
+            function: function.name.clone(),
+            message: "expected exactly one string argument".to_string(),
+        });
     }
 
-    let Expression::Literal(literal) =
-        &attribute.args[0]
-    else {
-        return Err(
-            RuntimeError::InvalidNativeAttribute {
-                function: function.name.clone(),
-                message:
-                "argument must be a string literal"
-                    .to_string(),
-            },
-        );
+    let Expression::Literal(literal) = &attribute.args[0] else {
+        return Err(RuntimeError::InvalidNativeAttribute {
+            function: function.name.clone(),
+            message: "argument must be a string literal".to_string(),
+        });
     };
 
     let LiteralKind::String(name) = &literal.kind else {
-        return Err(
-            RuntimeError::InvalidNativeAttribute {
-                function: function.name.clone(),
-                message:
-                "argument must be a string literal"
-                    .to_string(),
-            },
-        );
+        return Err(RuntimeError::InvalidNativeAttribute {
+            function: function.name.clone(),
+            message: "argument must be a string literal".to_string(),
+        });
     };
 
     Ok(Some(name.clone()))
 }
 
-fn value_type_name(
-    value: &Value,
-) -> &'static str {
+fn value_type_name(value: &Value) -> &'static str {
     match value {
         Value::String(_) => "String",
         Value::Number(_) => "Number",

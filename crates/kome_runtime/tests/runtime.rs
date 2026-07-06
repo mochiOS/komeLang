@@ -1,13 +1,5 @@
-use kome_runtime::{
-    Interpreter,
-    NativeRegistry,
-    RuntimeError,
-    Value,
-};
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use kome_runtime::{Interpreter, NativeRegistry, RuntimeError, Value};
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn executes_kome_wrapper_around_native_function() {
@@ -25,40 +17,28 @@ fn main() {
 }
 "#,
     )
-        .unwrap();
+    .unwrap();
 
     let output = Arc::new(Mutex::new(Vec::new()));
     let native_output = Arc::clone(&output);
 
     let mut natives = NativeRegistry::new();
 
-    natives.register(
-        "core.write_line",
-        move |arguments| {
-            let [Value::String(value)] = arguments else {
-                return Err(RuntimeError::native(
-                    "core.write_line expects one String",
-                ));
-            };
+    natives.register("core.write_line", move |arguments| {
+        let [Value::String(value)] = arguments else {
+            return Err(RuntimeError::native("core.write_line expects one String"));
+        };
 
-            native_output
-                .lock()
-                .unwrap()
-                .push(value.clone());
+        native_output.lock().unwrap().push(value.clone());
 
-            Ok(Value::Null)
-        },
-    );
+        Ok(Value::Null)
+    });
 
-    let mut interpreter =
-        Interpreter::new(&module, &natives).unwrap();
+    let mut interpreter = Interpreter::new(&module, &natives).unwrap();
 
     interpreter.run_entry("main").unwrap();
 
-    assert_eq!(
-        *output.lock().unwrap(),
-        vec!["Hello from Kome".to_string()],
-    );
+    assert_eq!(*output.lock().unwrap(), vec!["Hello from Kome".to_string()],);
 }
 
 #[test]
@@ -69,16 +49,13 @@ fn other() {
 }
 "#,
     )
-        .unwrap();
+    .unwrap();
 
     let natives = NativeRegistry::new();
 
-    let mut interpreter =
-        Interpreter::new(&module, &natives).unwrap();
+    let mut interpreter = Interpreter::new(&module, &natives).unwrap();
 
-    let error = interpreter
-        .run_entry("main")
-        .unwrap_err();
+    let error = interpreter.run_entry("main").unwrap_err();
 
     assert!(matches!(
         error,
@@ -103,38 +80,26 @@ fn main() {
 }
 "#,
     )
-        .unwrap();
+    .unwrap();
 
     let output = Arc::new(Mutex::new(Vec::new()));
     let native_output = Arc::clone(&output);
 
     let mut natives = NativeRegistry::new();
 
-    natives.register(
-        "test.capture",
-        move |arguments| {
-            let [Value::String(value)] = arguments else {
-                return Err(RuntimeError::native(
-                    "test.capture expects one String",
-                ));
-            };
+    natives.register("test.capture", move |arguments| {
+        let [Value::String(value)] = arguments else {
+            return Err(RuntimeError::native("test.capture expects one String"));
+        };
 
-            native_output
-                .lock()
-                .unwrap()
-                .push(value.clone());
+        native_output.lock().unwrap().push(value.clone());
 
-            Ok(Value::Null)
-        },
-    );
+        Ok(Value::Null)
+    });
 
-    let mut interpreter =
-        Interpreter::new(&module, &natives).unwrap();
+    let mut interpreter = Interpreter::new(&module, &natives).unwrap();
 
     interpreter.run_entry("main").unwrap();
 
-    assert_eq!(
-        *output.lock().unwrap(),
-        vec!["argument".to_string()],
-    );
+    assert_eq!(*output.lock().unwrap(), vec!["argument".to_string()],);
 }

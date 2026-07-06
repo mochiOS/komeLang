@@ -1,11 +1,11 @@
 use crate::error::ResolutionError;
 use crate::scope::{NameResolution, Reference, Scope, ScopeId, ScopeKind, Symbol, SymbolId};
 use kome_ast::Span;
+use kome_ast::declarations::UseImport;
 use kome_ast::{
     declarations::{
         Binding, ComponentDeclaration, ComponentMember, Declaration, EnumCase, EnumDeclaration,
         ExtensionDeclaration, ExtensionMember, FunctionDeclaration, Module, RecipeDeclaration,
-        UseSpecifier,
     },
     expressions::{
         AssignmentExpression, BinaryExpression, BlockExpression, CallArg, CallExpression,
@@ -53,10 +53,7 @@ impl ScopeBuilder {
         Self::resolve_with_builtins(module, &[])
     }
 
-    pub fn resolve_with_builtins(
-        module: &Module,
-        builtins: &[&str],
-    ) -> NameResolution {
+    pub fn resolve_with_builtins(module: &Module, builtins: &[&str]) -> NameResolution {
         let mut builder = Self::new();
 
         builder.visit_module(module, builtins);
@@ -72,11 +69,7 @@ impl ScopeBuilder {
 
     // -- module visitor --
 
-    fn visit_module(
-        &mut self,
-        module: &Module,
-        builtins: &[&str],
-    ) {
+    fn visit_module(&mut self, module: &Module, builtins: &[&str]) {
         self.enter_scope(ScopeKind::Module);
 
         for name in builtins {
@@ -89,18 +82,29 @@ impl ScopeBuilder {
         }
 
         for decl in &module.declarations {
-            if let Declaration::Use(use_decl) = decl {
-                for spec in &use_decl.specifiers {
-                    if let UseSpecifier::Named { name, span } = spec {
-                        self.declare(
-                            *span,
-                            Symbol::ImportedName {
-                                name: name.clone(),
-                                span: *span,
-                            },
-                        );
-                    }
+            let Declaration::Use(use_declaration) = decl else {
+                continue;
+            };
+
+            for import in &use_declaration.imports {
+                let UseImport::Module(path) = import else {
+                    continue;
+                };
+
+                if path.segments.len() != 1 {
+                    continue;
                 }
+
+                let segment = &path.segments[0];
+
+                self.declare(
+                    segment.span,
+                    Symbol::ImportedName {
+                        name: segment.name.clone(),
+
+                        span: segment.span,
+                    },
+                );
             }
         }
 

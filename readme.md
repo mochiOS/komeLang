@@ -8,4 +8,4 @@ Kome is a programming language for [mochiOS](https://github.com/tas0dev/mochiOS)
 
 You can access this language's standard library [here](https://github.com/mochiOS/kome_std).
 
-You can use the stdlib by cloning this repository and setting the `KOME_STDLIB_PATH` environment variable to the path of the stdlib root.
+please clone and install with `make install` command.

@@ -6,21 +6,21 @@ edition = "2024"
 [workspace]
 resolver = "3"
 members = [
-  "crates/kome_ast",
-  "crates/kome_lsp",
-  "crates/kome_parser",
-  "crates/kome_runtime",
-  "crates/kome_semantics",
+  "crates/ast",
+  "crates/lsp",
+  "crates/parser",
+  "crates/runtime",
+  "crates/semantics",
 ]
 
 [workspace.package]
 edition = "2024"
 
 [workspace.dependencies]
-kome_ast = { path = "crates/kome_ast" }
-kome_parser = { path = "crates/kome_parser" }
-kome_semantics = { path = "crates/kome_semantics" }
-kome_runtime = { path = "crates/kome_runtime" }
+kome_ast = { path = "crates/ast" }
+kome_parser = { path = "crates/parser" }
+kome_semantics = { path = "crates/semantics" }
+kome_runtime = { path = "crates/runtime" }
 
 [dependencies]
 kome_ast.workspace = true

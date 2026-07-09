@@ -22,6 +22,7 @@ struct KomeupConfig {
     default_toolchain: String,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LoadedModule {
     pub path: PathBuf,
@@ -29,6 +30,7 @@ pub struct LoadedModule {
     pub module: Module,
 }
 
+#[allow(unused)]
 impl StandardLibrary {
     pub fn discover() -> Result<Self, String> {
         if let Some(raw_path) = env::var_os(STDLIB_PATH_ENV) {

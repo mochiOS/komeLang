@@ -167,12 +167,15 @@ fn standard_library_import_span(module: &Module) -> Option<Span> {
                 continue;
             };
 
-            let is_std = path
-                .segments
-                .first()
-                .is_some_and(|segment| segment.name == "std");
+            let is_installed = path.segments.first().is_some_and(|segment| {
+                matches!(
+                    &segment.kind,
+                    kome_ast::declarations::PathSegmentKind::Ident(name)
+                        if komec::stdlib::is_known_package(name)
+                )
+            });
 
-            if is_std {
+            if is_installed {
                 return Some(path.span);
             }
         }

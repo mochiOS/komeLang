@@ -3,7 +3,7 @@ use crate::{
     error::{ParseError, ParseErrorKind},
     token::{Token, TokenKind},
 };
-use kome_ast::declarations::{ModulePath, ModulePathSegment, UseImport};
+use kome_ast::declarations::{Path, PathSegment, PathSegmentKind, PathSeparator, UseImport};
 use kome_ast::{
     AstNode, Span,
     declarations::{
@@ -1796,28 +1796,61 @@ impl Parser {
         match token.kind {
             TokenKind::Star => Ok(UseImport::Wildcard { span: token_span }),
 
-            TokenKind::Ident(name) => {
-                let mut segments = vec![ModulePathSegment {
+            TokenKind::Ident(_) | TokenKind::Self_ | TokenKind::Super => {
+                let kind = match &token.kind {
+                    TokenKind::Ident(name) => PathSegmentKind::Ident(name.clone()),
+                    TokenKind::Self_ => PathSegmentKind::Self_,
+                    TokenKind::Super => PathSegmentKind::Super,
+                    _ => unreachable!(),
+                };
+
+                let mut segments = vec![PathSegment {
                     span: token_span,
-                    name,
+                    kind,
                 }];
+                let mut separators = Vec::new();
 
                 let start = token_span.start;
                 let mut end = token_span.end;
 
-                while self.at(|kind| matches!(kind, TokenKind::Dot)) {
-                    self.advance();
+                loop {
+                    if self.at(|kind| matches!(kind, TokenKind::ColonColon)) {
+                        self.advance();
+                        separators.push(PathSeparator::ColonColon);
 
-                    let (name, span) = self.expect_identifier("a module path segment after `.`")?;
+                        let segment_token = self.advance();
+                        let segment_span = segment_token.span;
 
-                    end = span.end;
+                        let kind = match &segment_token.kind {
+                            TokenKind::Ident(name) => PathSegmentKind::Ident(name.clone()),
+                            TokenKind::Self_ => PathSegmentKind::Self_,
+                            TokenKind::Super => PathSegmentKind::Super,
+                            found => {
+                                return Err(ParseError::new(
+                                    ParseErrorKind::Expected {
+                                        expected: "a path segment after `::`",
+                                        found: found.clone(),
+                                    },
+                                    segment_span,
+                                ));
+                            }
+                        };
 
-                    segments.push(ModulePathSegment { span, name });
+                        end = segment_span.end;
+
+                        segments.push(PathSegment {
+                            span: segment_span,
+                            kind,
+                        });
+                    } else {
+                        break;
+                    }
                 }
 
-                Ok(UseImport::Module(ModulePath {
+                Ok(UseImport::Module(Path {
                     span: Span::new(start, end),
                     segments,
+                    separators,
                 }))
             }
 

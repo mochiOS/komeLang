@@ -3,7 +3,7 @@ use crate::scope::{
     NameResolution, Reference, Scope, ScopeId, ScopeKind, SourceId, Symbol, SymbolId,
 };
 use kome_ast::Span;
-use kome_ast::declarations::UseImport;
+use kome_ast::declarations::{PathSegmentKind, UseImport};
 use kome_ast::{
     declarations::{
         Binding, ComponentDeclaration, ComponentMember, Declaration, EnumCase, EnumDeclaration,
@@ -145,10 +145,14 @@ impl ScopeBuilder {
 
                 let segment = &path.segments[0];
 
+                let PathSegmentKind::Ident(name) = &segment.kind else {
+                    continue;
+                };
+
                 self.declare(
                     segment.span,
                     Symbol::ImportedName {
-                        name: segment.name.clone(),
+                        name: name.clone(),
                         span: segment.span,
                     },
                 );

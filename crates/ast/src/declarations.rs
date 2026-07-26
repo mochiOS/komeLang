@@ -153,23 +153,42 @@ pub struct UseDeclaration {
 /// One import entry inside a `use` declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UseImport {
-    Module(ModulePath),
+    Module(Path),
 
     Wildcard { span: Span },
 }
 
-/// A dot-separated module path such as `std.io`.
+/// A path like `std::io`, `self::super::thing`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ModulePath {
+pub struct Path {
     pub span: Span,
-    pub segments: Vec<ModulePathSegment>,
+    pub segments: Vec<PathSegment>,
+    pub separators: Vec<PathSeparator>,
 }
 
-/// One identifier inside a module path.
+/// One segment inside a path.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ModulePathSegment {
+pub struct PathSegment {
     pub span: Span,
-    pub name: String,
+    pub kind: PathSegmentKind,
+}
+
+/// The kind of a path segment.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathSegmentKind {
+    /// A regular identifier like `std`, `io`, `foo`.
+    Ident(String),
+    /// The `self` keyword.
+    Self_,
+    /// The `super` keyword.
+    Super,
+}
+
+/// Separator between path segments.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathSeparator {
+    /// `::`
+    ColonColon,
 }
 
 // ---- Enum ----
@@ -290,15 +309,21 @@ impl AstNode for UseImport {
     }
 }
 
-impl AstNode for ModulePath {
+impl AstNode for Path {
     fn span(&self) -> Span {
         self.span
     }
 }
 
-impl AstNode for ModulePathSegment {
+impl AstNode for PathSegment {
     fn span(&self) -> Span {
         self.span
+    }
+}
+
+impl AstNode for PathSeparator {
+    fn span(&self) -> Span {
+        Span::new(0, 0)
     }
 }
 

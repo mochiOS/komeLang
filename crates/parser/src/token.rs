@@ -25,6 +25,8 @@ pub enum TokenKind {
     True,
     False,
     Null,
+    Self_,
+    Super,
 
     Ident(String),
     String(String),
@@ -45,6 +47,9 @@ pub enum TokenKind {
     Comma,
     Dot,
     Colon,
+
+    /// `::`
+    ColonColon,
 
     /// `?`
     Question,
@@ -132,6 +137,8 @@ impl TokenKind {
             "true" => Self::True,
             "false" => Self::False,
             "null" => Self::Null,
+            "self" => Self::Self_,
+            "super" => Self::Super,
             _ => Self::Ident(identifier),
         }
     }

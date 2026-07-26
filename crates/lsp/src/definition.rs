@@ -112,10 +112,17 @@ fn import_definition_at(
             let segments = path
                 .segments
                 .iter()
-                .map(|segment| segment.name.as_str())
+                .filter_map(|segment| match &segment.kind {
+                    kome_ast::declarations::PathSegmentKind::Ident(name) => Some(name.as_str()),
+                    _ => None,
+                })
                 .collect::<Vec<_>>();
 
-            if segments.first().copied() != Some("std") {
+            if !segments
+                .first()
+                .copied()
+                .is_some_and(komec::stdlib::is_known_package)
+            {
                 continue;
             }
 

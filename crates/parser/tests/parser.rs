@@ -1,4 +1,4 @@
-use kome_ast::declarations::{ModulePath, ModulePathSegment, UseImport};
+use kome_ast::declarations::{Path, PathSegment, PathSegmentKind, PathSeparator, UseImport};
 use kome_ast::{
     Span,
     declarations::{ComponentMember, Declaration},
@@ -35,21 +35,22 @@ fn parses_named_use_declaration() {
 
     assert_eq!(
         declaration.imports,
-        vec![UseImport::Module(ModulePath {
+        vec![UseImport::Module(Path {
             span: Span::new(4, 11,),
 
-            segments: vec![ModulePathSegment {
-                name: "viewKit".into(),
+            segments: vec![PathSegment {
+                kind: PathSegmentKind::Ident("viewKit".into()),
 
                 span: Span::new(4, 11,),
-            },],
-        },),],
+            }],
+            separators: vec![],
+        },)],
     );
 }
 
 #[test]
-fn parses_dotted_use_declaration() {
-    let source = "use std.io";
+fn parses_double_colon_use_declaration() {
+    let source = "use std::io";
     let module = parse(source).unwrap();
 
     let Declaration::Use(declaration) = &module.declarations[0] else {
@@ -60,22 +61,23 @@ fn parses_dotted_use_declaration() {
 
     assert_eq!(
         declaration.imports,
-        vec![UseImport::Module(ModulePath {
-            span: Span::new(4, 10,),
+        vec![UseImport::Module(Path {
+            span: Span::new(4, 11),
 
             segments: vec![
-                ModulePathSegment {
-                    name: "std".into(),
+                PathSegment {
+                    kind: PathSegmentKind::Ident("std".into()),
 
                     span: Span::new(4, 7,),
                 },
-                ModulePathSegment {
-                    name: "io".into(),
+                PathSegment {
+                    kind: PathSegmentKind::Ident("io".into()),
 
-                    span: Span::new(8, 10,),
+                    span: Span::new(9, 11,),
                 },
             ],
-        },),],
+            separators: vec![PathSeparator::ColonColon],
+        },)],
     );
 }
 
@@ -114,24 +116,26 @@ use collections, io"#;
     assert_eq!(
         declaration.imports,
         vec![
-            UseImport::Module(ModulePath {
+            UseImport::Module(Path {
                 span: Span::new(22, 33,),
 
-                segments: vec![ModulePathSegment {
-                    name: "collections".into(),
+                segments: vec![PathSegment {
+                    kind: PathSegmentKind::Ident("collections".into()),
 
                     span: Span::new(22, 33,),
-                },],
-            },),
-            UseImport::Module(ModulePath {
+                }],
+                separators: vec![],
+            }),
+            UseImport::Module(Path {
                 span: Span::new(35, 37,),
 
-                segments: vec![ModulePathSegment {
-                    name: "io".into(),
+                segments: vec![PathSegment {
+                    kind: PathSegmentKind::Ident("io".into()),
 
                     span: Span::new(35, 37,),
-                },],
-            },),
+                }],
+                separators: vec![],
+            }),
         ],
     );
 
@@ -142,7 +146,7 @@ use collections, io"#;
 
 #[test]
 fn rejects_missing_module_path_segment() {
-    let error = parse("use std.").unwrap_err();
+    let error = parse("use std::").unwrap_err();
 
     let FrontendError::Parse(error) = error else {
         panic!("expected parse error",);
@@ -151,7 +155,7 @@ fn rejects_missing_module_path_segment() {
     assert_eq!(
         error.kind,
         ParseErrorKind::Expected {
-            expected: "a module path segment after `.`",
+            expected: "a path segment after `::`",
 
             found: TokenKind::Eof,
         },
@@ -603,5 +607,93 @@ fn rejects_attribute_without_component_member() {
             expected: "a component member after attributes",
             found: TokenKind::RBrace,
         },
+    );
+}
+
+#[test]
+fn parses_triple_colon_colon_path() {
+    let source = "use std::collections::HashMap";
+    let module = parse(source).unwrap();
+
+    let Declaration::Use(declaration) = &module.declarations[0] else {
+        panic!("expected use declaration");
+    };
+
+    assert_eq!(
+        declaration.imports,
+        vec![UseImport::Module(Path {
+            span: Span::new(4, 29),
+            segments: vec![
+                PathSegment {
+                    kind: PathSegmentKind::Ident("std".into()),
+                    span: Span::new(4, 7),
+                },
+                PathSegment {
+                    kind: PathSegmentKind::Ident("collections".into()),
+                    span: Span::new(9, 20),
+                },
+                PathSegment {
+                    kind: PathSegmentKind::Ident("HashMap".into()),
+                    span: Span::new(22, 29),
+                },
+            ],
+            separators: vec![PathSeparator::ColonColon, PathSeparator::ColonColon],
+        })],
+    );
+}
+
+#[test]
+fn parses_self_in_path() {
+    let source = "use self::foo";
+    let module = parse(source).unwrap();
+
+    let Declaration::Use(declaration) = &module.declarations[0] else {
+        panic!("expected use declaration");
+    };
+
+    assert_eq!(
+        declaration.imports,
+        vec![UseImport::Module(Path {
+            span: Span::new(4, 13),
+            segments: vec![
+                PathSegment {
+                    kind: PathSegmentKind::Self_,
+                    span: Span::new(4, 8),
+                },
+                PathSegment {
+                    kind: PathSegmentKind::Ident("foo".into()),
+                    span: Span::new(10, 13),
+                },
+            ],
+            separators: vec![PathSeparator::ColonColon],
+        })],
+    );
+}
+
+#[test]
+fn parses_super_in_path() {
+    let source = "use super::bar";
+    let module = parse(source).unwrap();
+
+    let Declaration::Use(declaration) = &module.declarations[0] else {
+        panic!("expected use declaration");
+    };
+
+    assert_eq!(
+        declaration.imports,
+        vec![UseImport::Module(Path {
+            span: Span::new(4, 14),
+            segments: vec![
+                PathSegment {
+                    kind: PathSegmentKind::Super,
+                    span: Span::new(4, 9),
+                },
+                PathSegment {
+                    kind: PathSegmentKind::Ident("bar".into()),
+                    span: Span::new(11, 14),
+                },
+            ],
+            separators: vec![PathSeparator::ColonColon],
+        })],
     );
 }

@@ -8,6 +8,12 @@ use std::{
 
 pub const STDLIB_PATH_ENV: &str = "KOME_STDLIB_PATH";
 
+pub const KNOWN_PACKAGES: &[&str] = &["std", "viewkit"];
+
+pub fn is_known_package(name: &str) -> bool {
+    KNOWN_PACKAGES.contains(&name)
+}
+
 const KOMEUP_HOME_ENV: &str = "KOMEUP_HOME";
 
 pub struct StandardLibrary {
@@ -190,18 +196,19 @@ impl StandardLibrary {
     }
 
     fn load_module(&self, segments: &[String]) -> Result<LoadedModule, String> {
-        if segments.first().map(String::as_str) != Some("std") {
+        let package_name = segments.first().map(String::as_str).unwrap_or("");
+
+        if !is_known_package(package_name) {
             return Err(format!(
-                "standard library module path \
-                 must start with `std`: `{}`",
-                segments.join("."),
+                "unknown package `{}`; expected one of {:?}",
+                package_name, KNOWN_PACKAGES,
             ));
         }
 
         if segments.len() < 2 {
-            return Err("`std` must be followed by \
-                 a module name"
-                .to_owned());
+            return Err(format!(
+                "`{package_name}` must be followed by a module name"
+            ));
         }
 
         let mut base = self.root.clone();
@@ -220,9 +227,8 @@ impl StandardLibrary {
             module_path
         } else {
             return Err(format!(
-                "standard library module `{}` \
-                     was not found; expected `{}` \
-                     or `{}`",
+                "package module `{}` was not found; \
+                 expected `{}` or `{}`",
                 segments.join("."),
                 file_path.display(),
                 module_path.display(),
@@ -258,10 +264,13 @@ fn standard_library_imports(module: &Module) -> Vec<Vec<String>> {
             let segments = path
                 .segments
                 .iter()
-                .map(|segment| segment.name.clone())
+                .filter_map(|segment| match &segment.kind {
+                    kome_ast::declarations::PathSegmentKind::Ident(name) => Some(name.clone()),
+                    _ => None,
+                })
                 .collect::<Vec<_>>();
 
-            if segments.first().map(String::as_str) == Some("std") && segments.len() > 1 {
+            if segments.first().is_some_and(|name| is_known_package(name)) && segments.len() > 1 {
                 imports.push(segments);
             }
         }

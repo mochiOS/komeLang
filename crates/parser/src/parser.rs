@@ -101,6 +101,12 @@ impl Parser {
             return self.parse_let_binding(attributes).map(Declaration::Let);
         }
 
+        if self.at(|kind| matches!(kind, TokenKind::Const)) {
+            return self
+                .parse_const_binding(attributes)
+                .map(Declaration::Constant);
+        }
+
         if self.at(|kind| matches!(kind, TokenKind::Use)) {
             if attributes.is_empty() {
                 return self.parse_use_declaration().map(Declaration::Use);
@@ -575,6 +581,11 @@ impl Parser {
         self.parse_binding_after_keyword(attributes, keyword.span.start, mutable)
     }
 
+    fn parse_const_binding(&mut self, attributes: Vec<Attribute>) -> Result<Binding, ParseError> {
+        let keyword = self.expect("`const`", |kind| matches!(kind, TokenKind::Const))?;
+        self.parse_binding_after_keyword(attributes, keyword.span.start, false)
+    }
+
     fn parse_binding_after_keyword(
         &mut self,
         attributes: Vec<Attribute>,
@@ -703,6 +714,8 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         match &self.current().kind {
             TokenKind::Let => self.parse_let_binding(Vec::new()).map(Statement::Let),
+
+            TokenKind::Const => self.parse_const_binding(Vec::new()).map(Statement::Let),
 
             TokenKind::If => self.parse_if_statement(),
 

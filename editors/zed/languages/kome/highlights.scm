@@ -37,7 +37,7 @@
   (keyword) @_binding_keyword
   .
   (identifier) @variable
-  (#match? @_binding_keyword "^(state|let|mut)$")
+  (#match? @_binding_keyword "^(state|let|mut|const)$")
   )
 
 ; Identifiers beginning with an uppercase letter are treated as types.
@@ -61,3 +61,9 @@
   (identifier) @variant
   (#eq? @_dot ".")
   )
+
+; Double-colon path separator such as "std::io".
+(
+  (punctuation) @_colon_colon
+  (#eq? @_colon_colon "::")
+  ) @punctuation

@@ -49,6 +49,7 @@ class KomeSyntaxHighlighter :
             KomeTokenTypes.COMMA -> pack(COMMA)
             KomeTokenTypes.DOT -> pack(DOT)
             KomeTokenTypes.COLON -> pack(OPERATOR)
+            KomeTokenTypes.COLON_COLON -> pack(OPERATOR)
 
             TokenType.BAD_CHARACTER -> {
                 pack(BAD_CHARACTER)

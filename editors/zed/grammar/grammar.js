@@ -85,6 +85,7 @@ module.exports = grammar({
             "state",
             "let",
             "mut",
+            "const",
             "use",
             "if",
             "else",
@@ -95,6 +96,8 @@ module.exports = grammar({
             "break",
             "continue",
             "is",
+            "self",
+            "super",
         ),
 
         identifier: () => token(
@@ -135,6 +138,7 @@ module.exports = grammar({
             "]",
             ",",
             ".",
+            "::",
             ":",
         ),
     },

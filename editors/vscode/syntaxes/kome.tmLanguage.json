@@ -222,7 +222,7 @@
                 },
                 {
                     "name": "keyword.declaration.kome",
-                    "match": "\\b(?:fn|component|enum|extension|recipe|state|let|mut|const|use)\\b"
+                    "match": "\\b(?:fn|component|enum|extension|recipe|state|let|mut|const|use|self|super)\\b"
                 },
                 {
                     "name": "keyword.operator.word.kome",
@@ -263,6 +263,10 @@
                 {
                     "name": "punctuation.separator.comma.kome",
                     "match": ","
+                },
+                {
+                    "name": "punctuation.separator.path.kome",
+                    "match": "::"
                 },
                 {
                     "name": "punctuation.separator.colon.kome",

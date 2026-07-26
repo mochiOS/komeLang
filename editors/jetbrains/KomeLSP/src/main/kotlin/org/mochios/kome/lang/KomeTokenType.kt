@@ -27,4 +27,5 @@ object KomeTokenTypes {
     val COMMA = KomeTokenType("COMMA")
     val DOT = KomeTokenType("DOT")
     val COLON = KomeTokenType("COLON")
+    val COLON_COLON = KomeTokenType("COLON_COLON")
 }

@@ -252,6 +252,16 @@ class KomeLexer : LexerBase() {
     }
 
     private fun lexSymbol() {
+        if (
+            currentStart + 2 <= sourceEnd &&
+            source[currentStart] == ':' &&
+            source[currentStart + 1] == ':'
+        ) {
+            currentEnd = currentStart + 2
+            currentType = KomeTokenTypes.COLON_COLON
+            return
+        }
+
         val compoundOperator = if (
             currentStart + 2 <= sourceEnd
         ) {
@@ -353,6 +363,7 @@ class KomeLexer : LexerBase() {
             "state",
             "let",
             "mut",
+            "const",
             "use",
             "if",
             "else",
@@ -366,6 +377,8 @@ class KomeLexer : LexerBase() {
             "true",
             "false",
             "null",
+            "self",
+            "super",
         )
 
         private val COMPOUND_OPERATORS = setOf(

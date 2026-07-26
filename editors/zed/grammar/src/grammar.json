@@ -208,6 +208,10 @@
         },
         {
           "type": "STRING",
+          "value": "const"
+        },
+        {
+          "type": "STRING",
           "value": "use"
         },
         {
@@ -245,6 +249,14 @@
         {
           "type": "STRING",
           "value": "is"
+        },
+        {
+          "type": "STRING",
+          "value": "self"
+        },
+        {
+          "type": "STRING",
+          "value": "super"
         }
       ]
     },
@@ -382,6 +394,10 @@
         {
           "type": "STRING",
           "value": "."
+        },
+        {
+          "type": "STRING",
+          "value": "::"
         },
         {
           "type": "STRING",

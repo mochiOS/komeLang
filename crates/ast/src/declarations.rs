@@ -267,6 +267,12 @@ impl Module {
     }
 }
 
+impl AstNode for Module {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 // ---- AstNode implementations ----
 
 impl AstNode for UseDeclaration {

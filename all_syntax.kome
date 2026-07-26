@@ -1,4 +1,4 @@
-use viewKit
+use viewkit::prelude
 
 fn greet(name: String, greeting: String) -> String {
     return greeting + ", " + name
@@ -18,7 +18,7 @@ component App(title: String = "Kome") {
     state nested = { a: 1, b: 2 }
     state counter = 0
     state input = TextInput()
-    state color = .blue
+    state color: Color = .blue
     state pct = 75%
     state list = [1, 2, 3, null]
     state obj = { name: "kome", version: 1 }
